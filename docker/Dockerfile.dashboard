@@ -1,0 +1,21 @@
+# Dashboard Dockerfile (Next.js)
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies for Next.js
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy dashboard source (to be created in Phase 10)
+COPY src/dashboard/ ./src/dashboard/
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs
+USER nodejs
+
+EXPOSE 3000
+
+# Next.js handles the start command
+CMD ["npm", "start"]

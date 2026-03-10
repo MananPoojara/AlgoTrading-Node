@@ -1,0 +1,23 @@
+# API Server Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy source code
+COPY src/api/ ./src/api/
+COPY src/database/ ./src/database/
+COPY src/core/ ./src/core/
+COPY config/ ./config/
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs
+USER nodejs
+
+EXPOSE 3001
+
+CMD ["node", "src/api/server.js"]
