@@ -1,9 +1,11 @@
 const axios = require("axios");
+const os = require("os");
 const { logger } = require("../../core/logger/logger");
 const config = require("../../../config/default");
 
 const API_BASE_URL =
   process.env.ANGEL_ONE_API_URL || "https://apiconnect.angelone.in";
+const LOGIN_PATH = "/rest/auth/angelbroking/user/v1/loginByPassword";
 
 class AngelOneBrokerAPI {
   constructor(options = {}) {
@@ -23,32 +25,64 @@ class AngelOneBrokerAPI {
     this.isConnected = false;
   }
 
+  getBaseHeaders() {
+    const interfaces = os.networkInterfaces();
+    let localIp = "127.0.0.1";
+    let macAddress = "02:00:00:00:00:00";
+
+    for (const addresses of Object.values(interfaces)) {
+      for (const address of addresses || []) {
+        if (address.family === "IPv4" && !address.internal) {
+          localIp = address.address;
+          if (address.mac && address.mac !== "00:00:00:00:00:00") {
+            macAddress = address.mac;
+          }
+          break;
+        }
+      }
+      if (localIp !== "127.0.0.1") {
+        break;
+      }
+    }
+
+    return {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "X-PrivateKey": this.apiKey,
+      "X-UserType": "USER",
+      "X-SourceID": "WEB",
+      "X-ClientLocalIP": process.env.ANGEL_ONE_LOCAL_IP || localIp,
+      "X-ClientPublicIP":
+        process.env.ANGEL_ONE_PUBLIC_IP || process.env.ANGEL_ONE_LOCAL_IP || localIp,
+      "X-MACAddress": process.env.ANGEL_ONE_MAC_ADDRESS || macAddress,
+    };
+  }
+
   async login(clientCode, password, twoFA) {
     try {
       const response = await this.httpClient.post(
-        "/rest/auth/login",
+        LOGIN_PATH,
         {
           clientcode: clientCode,
           password: password,
           totp: twoFA,
         },
         {
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
+          headers: this.getBaseHeaders(),
         },
       );
 
       if (response.data.status) {
+        const responseData = response.data.data || response.data;
         this.clientCode = clientCode;
         this.password = password;
-        this.jwtToken = response.data.jwtToken;
-        this.feedToken = response.data.feedToken;
-        this.refreshTokenValue = response.data.refreshToken || "";
+        this.jwtToken =
+          responseData.jwtToken || responseData.jwtTokenValue || null;
+        this.feedToken = responseData.feedToken || null;
+        this.refreshTokenValue = responseData.refreshToken || "";
         this.isConnected = true;
 
-        const tokenExpiryMs = (response.data.expiresIn || 3600) * 1000;
+        const tokenExpiryMs = (responseData.expiresIn || 3600) * 1000;
         this.tokenExpiry = Date.now() + tokenExpiryMs - 60000;
 
         this.httpClient.defaults.headers.common["Authorization"] =

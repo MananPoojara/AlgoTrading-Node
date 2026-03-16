@@ -113,6 +113,14 @@ class OrderQueue {
   }
 
   getOrderKey(order) {
+    if (order?.id !== undefined && order?.id !== null) {
+      return `order_id_${order.id}`;
+    }
+
+    if (order?.event_id) {
+      return `event_id_${order.event_id}`;
+    }
+
     return `${order.client_id}_${order.symbol}_${order.side}`;
   }
 

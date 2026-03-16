@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 17, 24, 39;
+  --background-end-rgb: 17, 24, 39;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply bg-gray-800 rounded-lg p-6 border border-gray-700;
+  }
+
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+  }
+
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-700 text-white;
+  }
+
+  .btn-success {
+    @apply bg-green-600 hover:bg-green-700 text-white;
+  }
+
+  .input {
+    @apply w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-gray-300 mb-1;
+  }
+
+  .status-badge {
+    @apply px-2 py-1 text-xs font-medium rounded-full;
+  }
+
+  .status-open {
+    @apply bg-blue-900 text-blue-300;
+  }
+
+  .status-completed {
+    @apply bg-green-900 text-green-300;
+  }
+
+  .status-cancelled {
+    @apply bg-red-900 text-red-300;
+  }
+
+  .status-pending {
+    @apply bg-yellow-900 text-yellow-300;
+  }
+}

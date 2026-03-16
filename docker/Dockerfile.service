@@ -1,19 +1,17 @@
-# Base service image for Node.js services
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
-
-# Copy source code
+COPY node_modules/ ./node_modules/
 COPY src/ ./src/
 COPY config/ ./config/
+COPY ["old-way-we-doing-for-algotrading/Symphony_30-09-2025/Test/NIFTY 50.csv", "./data/history/NIFTY_50.csv"]
 
-# Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 -G nodejs
+    adduser -S nodejs -u 1001 -G nodejs && \
+    mkdir -p /app/logs && \
+    chown nodejs:nodejs /app/logs
 USER nodejs
 
 # Expose default port

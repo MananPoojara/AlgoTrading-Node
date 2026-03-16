@@ -102,7 +102,7 @@ class WebSocketServer {
   }
 
   handleAuth(ws, data) {
-    const { token } = data;
+    const token = data?.payload?.token || data?.token;
 
     if (!token) {
       ws.send(
@@ -119,7 +119,7 @@ class WebSocketServer {
 
     ws.send(
       JSON.stringify({
-        type: "authenticated",
+        type: "auth_success",
         message: "Authentication successful",
       }),
     );
@@ -128,7 +128,7 @@ class WebSocketServer {
   }
 
   handleSubscribe(ws, data) {
-    const { channels } = data;
+    const channels = data?.payload?.channels || data?.channels;
 
     if (!Array.isArray(channels)) {
       ws.send(
@@ -168,7 +168,7 @@ class WebSocketServer {
   }
 
   handleUnsubscribe(ws, data) {
-    const { channels } = data;
+    const channels = data?.payload?.channels || data?.channels;
 
     if (!Array.isArray(channels)) {
       ws.send(
@@ -201,19 +201,19 @@ class WebSocketServer {
     const subscriber = getSubscriber();
 
     await subscriber.subscribeToMarketTicks((tick) => {
-      this.broadcastToSubscribers("market_data", tick);
+      this.broadcast("market_tick", tick, "market_data");
     });
 
     await subscriber.subscribeToStrategySignals((signal) => {
-      this.broadcastToSubscribers("signals", signal);
+      this.broadcast("signal", signal, "signals");
     });
 
     await subscriber.subscribe("order_updates", (order) => {
-      this.broadcastToSubscribers("orders", order);
+      this.broadcast("order_update", order, "orders");
     });
 
     await subscriber.subscribe("position_updates", (position) => {
-      this.broadcastToSubscribers("positions", position);
+      this.broadcast("position_update", position, "positions");
     });
 
     logger.info("WebSocket subscribed to event channels");
@@ -235,6 +235,22 @@ class WebSocketServer {
     }
   }
 
+  broadcast(type, data, channel) {
+    for (const [clientId, client] of this.clients) {
+      if (
+        client.ws.subscriptions.has(channel) &&
+        client.ws.readyState === WebSocket.OPEN
+      ) {
+        client.ws.send(
+          JSON.stringify({
+            type,
+            data,
+          }),
+        );
+      }
+    }
+  }
+
   sendToClient(clientId, type, data) {
     const client = this.clients.get(clientId);
 
@@ -243,7 +259,7 @@ class WebSocketServer {
     }
   }
 
-  broadcast(type, data) {
+  broadcastAll(type, data) {
     const message = JSON.stringify({ type, data });
 
     for (const [clientId, client] of this.clients) {

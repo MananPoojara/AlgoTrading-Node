@@ -1,6 +1,6 @@
-const { logger } = require("../../core/logger/logger");
-const { query } = require("../../database/postgresClient");
-const config = require("../../../config/default");
+const { logger } = require("../core/logger/logger");
+const { query } = require("../database/postgresClient");
+const config = require("../../config/default");
 
 const RISK_LIMITS = {
   MAX_POSITION_SIZE: "max_position_size",

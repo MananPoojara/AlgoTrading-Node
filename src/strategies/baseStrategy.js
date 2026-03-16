@@ -1,5 +1,5 @@
-const { logger } = require('../../core/logger/logger');
-const { generateSignalEventId } = require('../../core/utils/idGenerator');
+const { logger } = require('../core/logger/logger');
+const { generateSignalEventId } = require('../core/utils/idGenerator');
 
 const STRATEGY_STATES = {
   CREATED: 'created',
@@ -18,9 +18,12 @@ class BaseStrategy {
     this.clientId = config.clientId || null;
     this.strategyId = config.strategyId || null;
     this.parameters = config.parameters || {};
+    this.evaluationMode =
+      config.evaluationMode || this.parameters.evaluationMode || 'tick';
     this.state = STRATEGY_STATES.CREATED;
     
     this.candles = [];
+    this.lastClosedCandle = null;
     this.lastTick = null;
     this.position = null;
     this.lastSignalTime = null;
@@ -42,30 +45,44 @@ class BaseStrategy {
     throw new Error('onTick() must be implemented by subclass');
   }
 
+  async onMarketTick(tick) {
+  }
+
   async onCandle(candle) {
   }
 
-  processTick(tick) {
+  async processTick(tick) {
     if (this.state !== STRATEGY_STATES.RUNNING) {
       return null;
     }
 
     this.lastTick = tick;
-    this.updateCandles(tick);
+    await this.onMarketTick(tick);
+    const candleUpdate = this.updateCandles(tick);
 
-    return this.onTick(tick);
+    if (!this.shouldEvaluate(candleUpdate)) {
+      return null;
+    }
+
+    return this.onTick(tick, candleUpdate);
   }
 
   updateCandles(tick) {
     if (!tick) return;
 
-    const candlePeriod = this.parameters.candlePeriod || '1min';
+    const candlePeriod = this.getEvaluationCandlePeriod();
     const now = new Date(tick.timestamp);
     const candleTime = this.getCandleTime(now, candlePeriod);
 
     let currentCandle = this.candles[this.candles.length - 1];
+    let candleClosed = false;
 
     if (!currentCandle || currentCandle.time !== candleTime) {
+      if (currentCandle) {
+        this.lastClosedCandle = { ...currentCandle };
+        candleClosed = true;
+      }
+
       currentCandle = {
         time: candleTime,
         open: tick.ltp,
@@ -86,6 +103,34 @@ class BaseStrategy {
       currentCandle.low = Math.min(currentCandle.low, tick.ltp);
       currentCandle.close = tick.ltp;
       currentCandle.volume += tick.volume || 0;
+    }
+
+    return {
+      candleClosed,
+      currentCandle,
+      lastClosedCandle: this.lastClosedCandle,
+    };
+  }
+
+  getEvaluationCandlePeriod() {
+    switch (this.evaluationMode) {
+      case '1m_close':
+        return '1min';
+      case '5m_close':
+        return '5min';
+      default:
+        return this.parameters.candlePeriod || '1min';
+    }
+  }
+
+  shouldEvaluate(candleUpdate = {}) {
+    switch (this.evaluationMode) {
+      case '1m_close':
+      case '5m_close':
+        return Boolean(candleUpdate.candleClosed);
+      case 'tick':
+      default:
+        return true;
     }
   }
 
@@ -126,10 +171,15 @@ class BaseStrategy {
 
   emitSignal(action, instrument, quantity, priceType = 'MARKET', price = null) {
     if (!this.canEmitSignal()) {
+      const timeSinceLastSignal = this.lastSignalTime
+        ? Date.now() - this.lastSignalTime.getTime()
+        : null;
+
       logger.debug('Signal blocked by cooldown', { 
         strategy: this.name, 
         instanceId: this.instanceId,
-        timeSinceLastSignal: Date.now() - this.lastSignalTime?. });
+        timeSinceLastSignal
+      });
       return null;
     }
 
@@ -220,6 +270,7 @@ class BaseStrategy {
       instanceId: this.instanceId,
       clientId: this.clientId,
       state: this.state,
+      evaluationMode: this.evaluationMode,
       lastTick: this.lastTick?.timestamp,
       lastSignalTime: this.lastSignalTime?.toISOString(),
       candlesCount: this.candles.length,

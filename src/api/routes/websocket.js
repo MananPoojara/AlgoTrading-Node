@@ -3,6 +3,7 @@ const http = require("http");
 const { WebSocketServer: WSServer } = require("ws");
 const { logger } = require("../../core/logger/logger");
 const { getSubscriber } = require("../../core/eventBus/subscriber");
+const { query } = require("../../database/postgresClient");
 
 const router = express.Router();
 
@@ -16,6 +17,9 @@ function initializeWebSocket(server) {
     logger.info("WebSocket client connected", { ip: clientIp });
 
     ws.isAlive = true;
+    ws.authenticated = false;
+    ws.subscriptions = new Set();
+
     ws.on("pong", () => {
       ws.isAlive = true;
     });
@@ -64,27 +68,32 @@ function initializeWebSocket(server) {
   return wss;
 }
 
-function handleMessage(ws, data) {
+async function handleMessage(ws, data) {
   const { type, payload } = data;
 
-  switch (type) {
-    case "auth":
-      handleAuth(ws, payload);
-      break;
-    case "subscribe":
-      handleSubscribe(ws, payload);
-      break;
-    case "unsubscribe":
-      handleUnsubscribe(ws, payload);
-      break;
-    default:
-      ws.send(
-        JSON.stringify({ type: "error", message: "Unknown message type" }),
-      );
+  try {
+    switch (type) {
+      case "auth":
+        await handleAuth(ws, payload);
+        break;
+      case "subscribe":
+        handleSubscribe(ws, payload);
+        break;
+      case "unsubscribe":
+        handleUnsubscribe(ws, payload);
+        break;
+      default:
+        ws.send(
+          JSON.stringify({ type: "error", message: "Unknown message type" }),
+        );
+    }
+  } catch (error) {
+    logger.error("WebSocket handler error", { error: error.message, type });
+    ws.send(JSON.stringify({ type: "error", message: "Internal error" }));
   }
 }
 
-function handleAuth(ws, payload) {
+async function handleAuth(ws, payload) {
   const { token } = payload;
 
   if (!token) {
@@ -92,20 +101,54 @@ function handleAuth(ws, payload) {
     return;
   }
 
-  ws.authenticated = true;
-  ws.token = token;
+  try {
+    const result = await query(
+      "SELECT id, client_id, expires_at FROM api_tokens WHERE token = $1 AND status = $2",
+      [token, "active"],
+    );
 
-  ws.send(
-    JSON.stringify({
-      type: "authenticated",
-      message: "Authentication successful",
-    }),
-  );
+    if (result.rows.length === 0) {
+      ws.send(JSON.stringify({ type: "error", message: "Invalid token" }));
+      return;
+    }
 
-  logger.info("WebSocket client authenticated");
+    const tokenRecord = result.rows[0];
+
+    if (new Date(tokenRecord.expires_at) < new Date()) {
+      ws.send(JSON.stringify({ type: "error", message: "Token expired" }));
+      return;
+    }
+
+    ws.authenticated = true;
+    ws.clientId = tokenRecord.client_id;
+
+    ws.send(
+      JSON.stringify({
+        type: "authenticated",
+        message: "Authentication successful",
+        clientId: tokenRecord.client_id,
+      }),
+    );
+
+    logger.info("WebSocket client authenticated", {
+      clientId: tokenRecord.client_id,
+    });
+  } catch (error) {
+    logger.error("WebSocket auth error", { error: error.message });
+    ws.send(
+      JSON.stringify({ type: "error", message: "Authentication failed" }),
+    );
+  }
 }
 
 function handleSubscribe(ws, payload) {
+  if (!ws.authenticated) {
+    ws.send(
+      JSON.stringify({ type: "error", message: "Authentication required" }),
+    );
+    return;
+  }
+
   const { channels } = payload;
 
   if (!Array.isArray(channels)) {
@@ -115,20 +158,48 @@ function handleSubscribe(ws, payload) {
     return;
   }
 
-  ws.subscriptions = new Set(channels);
+  const validChannels = [
+    "market_data",
+    "orders",
+    "positions",
+    "signals",
+    "trades",
+  ];
+  const valid = [];
+  const invalid = [];
+
+  for (const channel of channels) {
+    if (validChannels.includes(channel)) {
+      ws.subscriptions.add(channel);
+      valid.push(channel);
+    } else {
+      invalid.push(channel);
+    }
+  }
 
   ws.send(
     JSON.stringify({
       type: "subscribed",
-      channels: Array.from(ws.subscriptions),
+      channels: valid,
+      invalid: invalid.length > 0 ? invalid : undefined,
     }),
   );
 }
 
 function handleUnsubscribe(ws, payload) {
+  if (!ws.authenticated) {
+    ws.send(
+      JSON.stringify({ type: "error", message: "Authentication required" }),
+    );
+    return;
+  }
+
   const { channels } = payload;
 
   if (!Array.isArray(channels)) {
+    ws.send(
+      JSON.stringify({ type: "error", message: "Channels must be an array" }),
+    );
     return;
   }
 
@@ -145,32 +216,38 @@ function handleUnsubscribe(ws, payload) {
 }
 
 async function subscribeToEvents() {
-  const subscriber = getSubscriber();
+  try {
+    const subscriber = getSubscriber();
 
-  await subscriber.subscribeToMarketTicks((tick) => {
-    broadcast("market_tick", tick);
-  });
+    await subscriber.subscribeToMarketTicks((tick) => {
+      broadcast("market_tick", tick, "market_data");
+    });
 
-  await subscriber.subscribeToStrategySignals((signal) => {
-    broadcast("signal", signal);
-  });
+    await subscriber.subscribeToStrategySignals((signal) => {
+      broadcast("signal", signal, "signals");
+    });
 
-  await subscriber.subscribeToBrokerResponses((order) => {
-    broadcast("order_update", order);
-  });
+    await subscriber.subscribeToBrokerResponses((order) => {
+      broadcast("order_update", order, "orders");
+    });
 
-  await subscriber.subscribeToPositionUpdates((position) => {
-    broadcast("position_update", position);
-  });
+    await subscriber.subscribeToPositionUpdates((position) => {
+      broadcast("position_update", position, "positions");
+    });
 
-  await subscriber.subscribeToTradeEvents((trade) => {
-    broadcast("trade", trade);
-  });
+    await subscriber.subscribeToTradeEvents((trade) => {
+      broadcast("trade", trade, "trades");
+    });
 
-  logger.info("WebSocket server subscribed to events");
+    logger.info("WebSocket server subscribed to events");
+  } catch (error) {
+    logger.error("WebSocket event subscription error", {
+      error: error.message,
+    });
+  }
 }
 
-function broadcast(type, data) {
+function broadcast(type, data, channel) {
   if (!wss) return;
 
   const message = JSON.stringify({
@@ -182,22 +259,16 @@ function broadcast(type, data) {
   wss.clients.forEach((client) => {
     if (
       client.readyState === 1 &&
-      client.subscriptions?.has(getChannelForType(type))
+      client.authenticated &&
+      client.subscriptions.has(channel)
     ) {
-      client.send(message);
+      try {
+        client.send(message);
+      } catch (error) {
+        logger.error("WebSocket broadcast error", { error: error.message });
+      }
     }
   });
-}
-
-function getChannelForType(type) {
-  const mapping = {
-    market_tick: "market_data",
-    signal: "signals",
-    order_update: "orders",
-    position_update: "positions",
-    trade: "trades",
-  };
-  return mapping[type] || "all";
 }
 
 router.get("/status", (req, res) => {

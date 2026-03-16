@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { logger, childLogger } = require("../../core/logger/logger");
+const { childLogger } = require("../../core/logger/logger");
 const { getSubscriber, CHANNELS } = require("../../core/eventBus/subscriber");
 const {
   getPublisher,
@@ -16,6 +16,7 @@ const { getBrokerAPI } = require("../broker/angelOneBroker");
 const { RiskManager } = require("../../risk/riskManager");
 const { getMarginCalculator } = require("../../risk/marginCalculator");
 const { getCircuitBreaker } = require("../../risk/circuitBreaker");
+const { PaperPortfolioWriter } = require("./paperPortfolioWriter");
 const { query } = require("../../database/postgresClient");
 const config = require("../../../config/default");
 
@@ -36,6 +37,7 @@ class OrderManager {
     this.riskManager = new RiskManager({ clientId: config.defaultClientId });
     this.marginCalculator = getMarginCalculator();
     this.circuitBreaker = getCircuitBreaker();
+    this.paperPortfolioWriter = new PaperPortfolioWriter();
     this.orderProcessingInterval = null;
     this.stats = {
       signalsReceived: 0,
@@ -57,6 +59,7 @@ class OrderManager {
     logger.info("Initializing Order Manager", { paperMode: this.isPaperMode });
 
     this.publisher = getPublisher();
+    await this.riskManager.loadFromDatabase();
 
     if (!this.isPaperMode) {
       this.brokerAPI = getBrokerAPI();
@@ -68,6 +71,7 @@ class OrderManager {
     await this.subscribeToSignals();
     await this.subscribeToMarketTicks();
     await this.subscribeToBrokerResponses();
+    await this.restoreRecoverableOrders();
 
     this.startOrderProcessing();
 
@@ -112,6 +116,89 @@ class OrderManager {
     await this.sendToBroker(queueItem.order);
   }
 
+  async restoreRecoverableOrders() {
+    try {
+      const result = await query(
+        `SELECT *
+         FROM orders
+         WHERE execution_mode = $1
+           AND status IN ('created', 'validated', 'queued')
+         ORDER BY created_at ASC`,
+        [this.isPaperMode ? "paper" : "live"],
+      );
+
+      for (const order of result.rows) {
+        const replayOrder = await this.normalizeRecoveredOrder(order);
+        if (!replayOrder) {
+          continue;
+        }
+
+        const enqueued = this.orderQueue.enqueue(replayOrder);
+        if (!enqueued) {
+          logger.warn("Skipped recovering order into queue", {
+            orderId: replayOrder.id,
+            eventId: replayOrder.event_id,
+            status: replayOrder.status,
+          });
+        }
+      }
+
+      if (result.rows.length > 0) {
+        logger.info("Recovered orders into processing queue", {
+          count: result.rows.length,
+          executionMode: this.isPaperMode ? "paper" : "live",
+        });
+      }
+    } catch (error) {
+      logger.error("Failed to restore recoverable orders", {
+        error: error.message,
+      });
+    }
+  }
+
+  async normalizeRecoveredOrder(order) {
+    const normalizedOrder = { ...order };
+
+    if (normalizedOrder.status === ORDER_STATES.CREATED) {
+      const validated = await this.transitionOrderState(
+        normalizedOrder.id,
+        ORDER_STATES.VALIDATED,
+        { recovery: true },
+      );
+
+      if (!validated) {
+        logger.warn("Failed to recover created order into validated state", {
+          orderId: normalizedOrder.id,
+          eventId: normalizedOrder.event_id,
+        });
+        return null;
+      }
+
+      normalizedOrder.status = ORDER_STATES.VALIDATED;
+    }
+
+    if (normalizedOrder.status === ORDER_STATES.VALIDATED) {
+      const queued = await this.transitionOrderState(
+        normalizedOrder.id,
+        ORDER_STATES.QUEUED,
+        { recovery: true },
+      );
+
+      if (!queued) {
+        logger.warn("Failed to recover order into queued state", {
+          orderId: normalizedOrder.id,
+          eventId: normalizedOrder.event_id,
+          status: normalizedOrder.status,
+        });
+        return null;
+      }
+
+      normalizedOrder.status = ORDER_STATES.QUEUED;
+    }
+
+    return normalizedOrder;
+  }
+
   async subscribeToSignals() {
     const subscriber = getSubscriber();
 
@@ -126,7 +213,14 @@ class OrderManager {
     const subscriber = getSubscriber();
 
     await subscriber.subscribeToMarketTicks((tick) => {
-      this.marketPrices.set(tick.symbol, tick);
+      const price = Number(tick?.ltp || tick?.close || 0);
+      const keys = [tick?.symbol, tick?.instrument_token, tick?.token].filter(
+        Boolean,
+      );
+
+      keys.forEach((key) => {
+        this.marketPrices.set(String(key), price);
+      });
     });
 
     logger.info("Subscribed to market ticks");
@@ -156,18 +250,6 @@ class OrderManager {
       return null;
     }
 
-    const duplicateCheck = await this.validator.checkDuplicateSignal(signal);
-    if (duplicateCheck.isDuplicate) {
-      this.stats.duplicates++;
-
-      logger.warn("Duplicate signal ignored", {
-        eventId: signal.event_id,
-        existingStatus: duplicateCheck.existingStatus,
-      });
-
-      return null;
-    }
-
     const riskCheck = await this.riskManager.checkSignal(signal);
     if (!riskCheck.allowed) {
       this.stats.riskRejected++;
@@ -183,7 +265,8 @@ class OrderManager {
       return null;
     }
 
-    await this.recordSignal(signal, "pending");
+    const signalRecord = await this.recordSignal(signal, "pending");
+    signal.signal_id = signalRecord?.id || null;
 
     const order = await this.createOrder(signal);
 
@@ -209,6 +292,7 @@ class OrderManager {
       return null;
     }
 
+    this.riskManager.onOrderPlaced(order.id, order);
     await this.publishOrderRequest(order);
 
     logger.info("Order created, validated and queued", {
@@ -221,12 +305,25 @@ class OrderManager {
 
   async recordSignal(signal, status, reason = null) {
     try {
-      await query(
-        `INSERT INTO signals (event_id, strategy_instance_id, symbol, instrument, action, quantity, price_type, price, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (event_id) DO UPDATE SET status = $9`,
+      const result = await query(
+        `INSERT INTO signals (
+           event_id, client_id, strategy_id, strategy_instance_id, symbol, instrument,
+           action, quantity, price_type, price, status, metadata, rejection_reason
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         ON CONFLICT (event_id) DO UPDATE
+         SET status = EXCLUDED.status,
+             metadata = COALESCE(EXCLUDED.metadata, signals.metadata),
+             rejection_reason = EXCLUDED.rejection_reason,
+             processed_at = CASE
+               WHEN EXCLUDED.status IN ('processed', 'rejected', 'cancelled') THEN NOW()
+               ELSE signals.processed_at
+             END
+         RETURNING id, status`,
         [
           signal.event_id,
+          signal.client_id || null,
+          signal.strategy_id || null,
           signal.strategy_instance_id,
           signal.symbol,
           signal.instrument,
@@ -235,19 +332,26 @@ class OrderManager {
           signal.price_type,
           signal.price,
           status,
+          JSON.stringify(signal.metadata || {}),
+          reason,
         ],
       );
+      return result.rows[0] || null;
     } catch (error) {
       logger.error("Failed to record signal", { error: error.message });
+      return null;
     }
   }
 
   async createOrder(signal) {
     try {
       const result = await query(
-        `INSERT INTO orders (client_id, strategy_instance_id, signal_id, event_id, symbol, instrument, side, quantity, price, price_type, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         RETURNING id`,
+        `INSERT INTO orders (
+           client_id, strategy_instance_id, signal_id, event_id, symbol, instrument,
+           side, quantity, price, price_type, status, execution_mode
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING *`,
         [
           signal.client_id,
           signal.strategy_instance_id,
@@ -260,6 +364,7 @@ class OrderManager {
           signal.price,
           signal.price_type,
           ORDER_STATES.CREATED,
+          this.isPaperMode ? "paper" : "live",
         ],
       );
 
@@ -307,6 +412,7 @@ class OrderManager {
         await this.transitionOrderState(order.id, ORDER_STATES.ACKNOWLEDGED, {
           brokerOrderId: brokerResponse.brokerOrderId,
         });
+        this.orderQueue.complete(order.id);
         this.stats.ordersSent++;
         logger.info("Order sent to broker", {
           orderId: order.id,
@@ -336,15 +442,16 @@ class OrderManager {
 
   simulatePaperFill(order) {
     setTimeout(async () => {
-      const fillPrice =
-        order.price_type === "MARKET"
-          ? this.marketPrices.get(order.instrument) || 0
-          : order.price;
+      const marketPrice = this.resolveMarketPrice(order);
+      const fillPrice = order.price_type === "MARKET" ? marketPrice : Number(order.price || marketPrice || 0);
 
       const slippage = fillPrice * (PAPER_SLIPPAGE_PERCENT / 100);
       const filledPrice =
         order.side === "BUY" ? fillPrice + slippage : fillPrice - slippage;
 
+      await this.transitionOrderState(order.id, ORDER_STATES.ACKNOWLEDGED, {
+        brokerOrderId: `PAPER_${order.id}`,
+      });
       await this.transitionOrderState(order.id, ORDER_STATES.FILLED, {
         filledPrice,
         filledQuantity: order.quantity,
@@ -352,6 +459,11 @@ class OrderManager {
       });
 
       await this.riskManager.onOrderFilled(order, filledPrice);
+      await this.paperPortfolioWriter.syncAfterFill(order, filledPrice, {
+        brokerTradeId: `PAPER_TRADE_${order.id}`,
+      });
+      await this.updateSignalStatus(order.id, "processed");
+      this.orderQueue.complete(order.id);
 
       this.stats.paperFills++;
       this.stats.ordersFilled++;
@@ -440,7 +552,7 @@ class OrderManager {
 
       const currentState = result.rows[0].status;
 
-      const stateMachine = new OrderStateMachine();
+      const stateMachine = new OrderStateMachine(currentState);
 
       try {
         stateMachine.transition(newState, eventData);
@@ -464,6 +576,7 @@ class OrderManager {
       }
       if (eventData.averagePrice !== undefined) {
         updateData.average_price = eventData.averagePrice;
+        updateData.average_fill_price = eventData.averagePrice;
       }
       if (eventData.rejectionReason) {
         updateData.rejection_reason = eventData.rejectionReason;
@@ -481,7 +594,7 @@ class OrderManager {
       values.push(orderId);
 
       await query(
-        `UPDATE orders SET ${updateFields.join(", ")}, updated_at = NOW() WHERE id = $${paramIndex}`,
+        `UPDATE orders SET ${updateFields.join(", ")} WHERE id = $${paramIndex}`,
         values,
       );
 
@@ -496,6 +609,14 @@ class OrderManager {
         oldState: currentState,
         newState,
       });
+
+      const updatedOrder = await this.getOrder(orderId);
+      if (updatedOrder) {
+        await this.publishOrderUpdate(updatedOrder, {
+          oldState: currentState,
+          newState,
+        });
+      }
 
       return true;
     } catch (error) {
@@ -546,6 +667,40 @@ class OrderManager {
     }
   }
 
+  async publishOrderUpdate(order, eventData = {}) {
+    try {
+      await this.publisher.publish("order_updates", {
+        event: "order_update",
+        order_id: order.id,
+        ...order,
+        ...eventData,
+      });
+    } catch (error) {
+      logger.error("Failed to publish order update", {
+        orderId: order.id,
+        error: error.message,
+      });
+    }
+  }
+
+  resolveMarketPrice(order) {
+    const lookupKeys = [
+      order.instrument,
+      order.symbol,
+      order.instrument_token,
+      order.token,
+    ].filter(Boolean);
+
+    for (const key of lookupKeys) {
+      const marketPrice = this.marketPrices.get(String(key));
+      if (typeof marketPrice === "number" && marketPrice > 0) {
+        return marketPrice;
+      }
+    }
+
+    return Number(order.price || 0);
+  }
+
   async handleBrokerResponse(response) {
     const {
       orderId,
@@ -575,6 +730,11 @@ class OrderManager {
         const filledOrder = await this.getOrder(orderId);
         if (filledOrder) {
           await this.riskManager.onOrderFilled(filledOrder, averagePrice);
+          await this.paperPortfolioWriter.syncAfterFill(
+            filledOrder,
+            averagePrice,
+            { brokerTradeId: brokerOrderId || `BROKER_TRADE_${orderId}` },
+          );
         }
 
         await this.updateSignalStatus(orderId, "processed");

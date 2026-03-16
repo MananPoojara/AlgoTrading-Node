@@ -1,5 +1,5 @@
-const { logger } = require('../../../core/logger/logger');
-const { BaseStrategy } = require('../../baseStrategy');
+const { logger } = require('../../core/logger/logger');
+const { BaseStrategy } = require('../baseStrategy');
 
 class IntradayMomentum extends BaseStrategy {
   constructor(config = {}) {

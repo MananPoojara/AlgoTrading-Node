@@ -1,4 +1,4 @@
-const { logger } = require('../../../core/logger/logger');
+const { logger } = require('../../core/logger/logger');
 const { BaseStrategy } = require('../baseStrategy');
 
 class BankNiftyStraddle extends BaseStrategy {

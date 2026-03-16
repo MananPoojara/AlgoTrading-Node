@@ -17,18 +17,18 @@ class EventSubscriber {
     if (this.messageHandlerInitialized) return;
     
     this.subscriber.on('message', (channel, message) => {
-      const handler = this.handlers.get(channel);
+      const handlers = this.handlers.get(channel) || [];
       
-      if (!handler) {
+      if (handlers.length === 0) {
         logger.debug(`No handler for channel: ${channel}`);
         return;
       }
 
       try {
         const data = JSON.parse(message);
-        handler(data);
+        handlers.forEach((handler) => handler(data));
       } catch {
-        handler(message);
+        handlers.forEach((handler) => handler(message));
       }
     });
     
@@ -36,15 +36,18 @@ class EventSubscriber {
   }
 
   async subscribe(channel, handler) {
-    if (this.subscriptions.has(channel)) {
-      logger.warn(`Already subscribed to channel: ${channel}`);
+    const existingHandlers = this.handlers.get(channel) || [];
+    if (existingHandlers.includes(handler)) {
+      logger.warn(`Handler already subscribed to channel: ${channel}`);
       return;
     }
 
     try {
+      if (!this.subscriptions.has(channel)) {
       await this.subscriber.subscribe(channel);
       this.subscriptions.add(channel);
-      this.handlers.set(channel, handler);
+      }
+      this.handlers.set(channel, [...existingHandlers, handler]);
 
       logger.info(`Subscribed to channel: ${channel}`);
     } catch (error) {
@@ -71,6 +74,22 @@ class EventSubscriber {
       });
       throw error;
     }
+  }
+
+  async unsubscribeHandler(channel, handler) {
+    const handlers = this.handlers.get(channel) || [];
+    const remainingHandlers = handlers.filter((candidate) => candidate !== handler);
+
+    if (remainingHandlers.length === handlers.length) {
+      return;
+    }
+
+    if (remainingHandlers.length === 0) {
+      await this.unsubscribe(channel);
+      return;
+    }
+
+    this.handlers.set(channel, remainingHandlers);
   }
 
   async subscribeToMarketTicks(handler) {

@@ -46,3 +46,6 @@ coverage/
 # Misc
 *.bak
 *.tmp
+
+# Legacy local research/backtest assets
+old-way-we-doing-for-algotrading/

@@ -1,5 +1,5 @@
-const { logger } = require('../../core/logger/logger');
-const { query } = require('../../database/postgresClient');
+const { logger } = require('../core/logger/logger');
+const { query } = require('../database/postgresClient');
 
 class ClientStrategyMapper {
   constructor() {
@@ -20,7 +20,7 @@ class ClientStrategyMapper {
           s.name as strategy_name,
           s.type as strategy_type,
           s.file_path,
-          s.parameters as strategy_parameters,
+          si.parameters as instance_parameters,
           c.name as client_name
         FROM strategy_instances si
         JOIN strategies s ON si.strategy_id = s.id
@@ -37,7 +37,7 @@ class ClientStrategyMapper {
           strategyName: row.strategy_name,
           strategyType: row.strategy_type,
           filePath: row.file_path,
-          parameters: row.strategy_parameters || {},
+          parameters: row.instance_parameters || {},
           status: row.instance_status
         });
       }

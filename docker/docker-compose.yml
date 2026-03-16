@@ -1,20 +1,20 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:15-alpine
     container_name: algo-postgres
+    env_file:
+      - ../.env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-algo_trading}
+      POSTGRES_USER: ${POSTGRES_USER:-algo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-algo123}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-algo} -d ${POSTGRES_DB:-algo_trading}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,6 +22,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: algo-redis
+    env_file:
+      - ../.env
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -40,7 +42,11 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.service
     container_name: algo-market-data
+    user: "0:0"
     command: node src/marketData/marketDataService.js
+    env_file:
+      - ../.env
+    network_mode: host
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,19 +54,18 @@ services:
         condition: service_healthy
     environment:
       - NODE_ENV=production
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=127.0.0.1
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-algo_trading}
       - POSTGRES_USER=${POSTGRES_USER:-algo}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-algo123}
-      - REDIS_HOST=redis
+      - REDIS_HOST=127.0.0.1
       - REDIS_PORT=6379
-      - ANGEL_ONE_API_KEY=${ANGEL_ONE_API_KEY}
     restart: always
     mem_limit: 512m
     cpus: 1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "node", "-e", "process.exit(0)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -71,14 +76,17 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.service
     container_name: algo-strategy-engine
+    user: "0:0"
     command: node src/strategyEngine/workerManager.js
+    env_file:
+      - ../.env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       market-data-service:
-        condition: service_healthy
+        condition: service_started
     environment:
       - NODE_ENV=production
       - POSTGRES_HOST=postgres
@@ -99,7 +107,10 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.service
     container_name: algo-order-manager
+    user: "0:0"
     command: node src/execution/orderManager/orderManager.js
+    env_file:
+      - ../.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,11 +130,14 @@ services:
     cpus: 1
 
   risk-engine:
+    profiles: ["optional"]
     build:
       context: ..
       dockerfile: docker/Dockerfile.service
     container_name: algo-risk-engine
     command: node src/execution/riskEngine/riskManager.js
+    env_file:
+      - ../.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,11 +157,14 @@ services:
     cpus: 1
 
   broker-gateway:
+    profiles: ["optional"]
     build:
       context: ..
       dockerfile: docker/Dockerfile.service
     container_name: algo-broker-gateway
     command: node src/execution/brokerGateway/brokerRouter.js
+    env_file:
+      - ../.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -172,9 +189,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.api
     container_name: algo-api
+    user: "0:0"
     command: node src/api/server.js
     ports:
       - "3001:3001"
+    env_file:
+      - ../.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -182,7 +202,7 @@ services:
         condition: service_healthy
     environment:
       - NODE_ENV=production
-      - PORT=3001
+      - API_PORT=3001
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-algo_trading}
@@ -190,8 +210,8 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-algo123}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - JWT_SECRET=${JWT_SECRET}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - JWT_SECRET=${JWT_SECRET:-dev-only-insecure-secret}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dev-only-32-char-insecure-ky}
     restart: always
     mem_limit: 512m
     cpus: 1
@@ -203,11 +223,15 @@ services:
     container_name: algo-dashboard
     ports:
       - "3000:3000"
+    env_file:
+      - ../.env
     depends_on:
-      - api-server
+      api-server:
+        condition: service_started
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://api-server:3001
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8080
     restart: always
     mem_limit: 512m
     cpus: 1

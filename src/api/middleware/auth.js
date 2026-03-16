@@ -23,8 +23,8 @@ async function requireAuth(req, res, next) {
 
   try {
     const result = await query(
-      "SELECT id, client_id, expires_at FROM api_tokens WHERE token = $1 AND status = $1",
-      [token],
+      "SELECT id, client_id, expires_at FROM api_tokens WHERE token = $1 AND status = $2",
+      [token, "active"],
     );
 
     if (result.rows.length === 0) {

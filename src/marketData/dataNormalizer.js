@@ -1,5 +1,5 @@
-const { toUTC, formatIST } = require('../../core/utils/time');
-const { logger } = require('../../core/logger/logger');
+const { toUTC, formatIST } = require('../core/utils/time');
+const { logger } = require('../core/logger/logger');
 
 class DataNormalizer {
   constructor(options = {}) {

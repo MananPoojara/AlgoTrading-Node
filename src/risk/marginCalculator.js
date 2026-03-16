@@ -1,5 +1,5 @@
-const { logger } = require("../../core/logger/logger");
-const config = require("../../../config/default");
+const { logger } = require("../core/logger/logger");
+const config = require("../../config/default");
 
 const MARGIN_REQUIREMENTS = {
   CASHANDCARRY: 0.2,
@@ -143,7 +143,7 @@ class MarginCalculator {
 
   async loadClientMarginsFromDatabase(clientId) {
     try {
-      const { query } = require("../../database/postgresClient");
+      const { query } = require("../database/postgresClient");
       const result = await query(
         `SELECT available_margin FROM client_accounts WHERE client_id = $1`,
         [clientId],

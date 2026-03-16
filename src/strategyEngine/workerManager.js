@@ -1,13 +1,34 @@
-const { logger, childLogger } = require('../../core/logger/logger');
-const { getPublisher, CHANNELS } = require('../../core/eventBus/publisher');
-const { getSubscriber, CHANNELS: SUB_CHANNELS } = require('../../core/eventBus/subscriber');
-const { getRedisClient } = require('../../core/eventBus/redisClient');
+const { childLogger } = require('../core/logger/logger');
+const { getPublisher, CHANNELS } = require('../core/eventBus/publisher');
+const { getSubscriber, CHANNELS: SUB_CHANNELS } = require('../core/eventBus/subscriber');
+const { getRedisClient } = require('../core/eventBus/redisClient');
 const { BaseStrategy, STRATEGY_STATES } = require('../strategies/baseStrategy');
 const { getStrategyLoader } = require('./strategyLoader');
-const config = require('../../../config/default');
+const { getClientStrategyMapper } = require('./clientStrategyMapper');
+const config = require('../../config/default');
 
 const SERVICE_NAME = 'strategy-engine';
 const logger = childLogger(SERVICE_NAME);
+
+function deriveStrategyKey(mapping = {}) {
+  if (mapping.filePath) {
+    const normalizedPath = String(mapping.filePath).replace(/\\/g, '/');
+    const pathParts = normalizedPath.split('/');
+    const fileName = pathParts[pathParts.length - 1].replace(/\.js$/i, '');
+    const category =
+      pathParts.length > 1
+        ? pathParts[pathParts.length - 2]
+        : mapping.strategyType || 'strategy';
+
+    return `${category}_${fileName}`.toUpperCase();
+  }
+
+  return `${mapping.strategyType || 'strategy'}_${String(
+    mapping.strategyName || 'unknown',
+  )
+    .replace(/\s+/g, '_')
+    .toUpperCase()}`;
+}
 
 const WORKER_STATES = {
   CREATED: 'created',
@@ -63,7 +84,7 @@ class StrategyWorker {
     logger.info('Subscribed to market ticks');
   }
 
-  handleTick(tick) {
+  async handleTick(tick) {
     if (this.state !== WORKER_STATES.RUNNING) {
       return;
     }
@@ -73,10 +94,10 @@ class StrategyWorker {
     for (const [instanceId, strategy] of this.strategies) {
       try {
         if (strategy.getSymbol() === tick.symbol) {
-          const signal = strategy.processTick(tick);
+          const signal = await strategy.processTick(tick);
           
           if (signal) {
-            this.handleSignal(signal);
+            await this.handleSignal(signal);
           }
         }
       } catch (error) {
@@ -115,6 +136,7 @@ class StrategyWorker {
     strategy.onSignal = (signal) => this.handleSignal(signal);
     
     this.strategies.set(instanceId, strategy);
+    this.syncStateFromStrategies();
     
     logger.info('Strategy registered', {
       workerId: this.id,
@@ -129,6 +151,7 @@ class StrategyWorker {
     if (strategy) {
       strategy.stop();
       this.strategies.delete(instanceId);
+      this.syncStateFromStrategies();
       
       logger.info('Strategy unregistered', {
         workerId: this.id,
@@ -182,20 +205,30 @@ class StrategyWorker {
   }
 
   pause() {
-    if (this.state === WORKER_STATES.RUNNING) {
-      for (const [_, strategy] of this.strategies) {
+    let pausedAny = false;
+    for (const [_, strategy] of this.strategies) {
+      if (strategy.getState() === STRATEGY_STATES.RUNNING) {
         strategy.pause();
+        pausedAny = true;
       }
-      this.setState(WORKER_STATES.PAUSED);
+    }
+
+    if (pausedAny) {
+      this.syncStateFromStrategies();
     }
   }
 
   resume() {
-    if (this.state === WORKER_STATES.PAUSED) {
-      for (const [_, strategy] of this.strategies) {
+    let resumedAny = false;
+    for (const [_, strategy] of this.strategies) {
+      if (strategy.getState() === STRATEGY_STATES.PAUSED) {
         strategy.resume();
+        resumedAny = true;
       }
-      this.setState(WORKER_STATES.RUNNING);
+    }
+
+    if (resumedAny) {
+      this.syncStateFromStrategies();
     }
   }
 
@@ -224,6 +257,29 @@ class StrategyWorker {
       stats: this.stats
     };
   }
+
+  syncStateFromStrategies() {
+    const strategyStates = Array.from(this.strategies.values()).map((strategy) =>
+      strategy.getState(),
+    );
+
+    if (strategyStates.length === 0) {
+      return;
+    }
+
+    const allPaused = strategyStates.every(
+      (state) => state === STRATEGY_STATES.PAUSED,
+    );
+
+    if (allPaused && this.state !== WORKER_STATES.PAUSED) {
+      this.setState(WORKER_STATES.PAUSED);
+      return;
+    }
+
+    if (!allPaused && this.state !== WORKER_STATES.RUNNING) {
+      this.setState(WORKER_STATES.RUNNING);
+    }
+  }
 }
 
 class WorkerManager {
@@ -232,6 +288,7 @@ class WorkerManager {
     this.strategyToWorker = new Map();
     this.publisher = null;
     this.redis = null;
+    this.initialized = false;
     this.isRunning = false;
     this.stats = {
       workersCreated: 0,
@@ -241,6 +298,10 @@ class WorkerManager {
   }
 
   async initialize() {
+    if (this.initialized) {
+      return;
+    }
+
     logger.info('Initializing Worker Manager');
     
     this.publisher = getPublisher();
@@ -248,6 +309,8 @@ class WorkerManager {
     await this.redis.connect();
     
     this.subscribeToControlCommands();
+    await this.restoreStrategiesFromDatabase();
+    this.initialized = true;
     
     logger.info('Worker Manager initialized');
   }
@@ -308,7 +371,14 @@ class WorkerManager {
   }
 
   async startStrategy(instanceId, config) {
-    const { strategyKey, clientId, strategyId, parameters, group } = config;
+    const {
+      strategyKey,
+      clientId,
+      strategyId,
+      parameters = {},
+      group,
+      desiredState = 'running'
+    } = config;
     
     if (!strategyKey) {
       logger.error('Cannot start strategy - missing strategyKey', { instanceId });
@@ -316,6 +386,9 @@ class WorkerManager {
     }
 
     const loader = getStrategyLoader();
+    if (!loader.loaded) {
+      await loader.loadAll();
+    }
     const StrategyClass = loader.get(strategyKey);
     
     if (!StrategyClass) {
@@ -342,6 +415,10 @@ class WorkerManager {
     await strategy.initialize();
     
     worker.registerStrategy(instanceId, strategy);
+    if (desiredState === 'paused') {
+      strategy.pause();
+      worker.syncStateFromStrategies();
+    }
     this.strategyToWorker.set(instanceId, worker.id);
     this.stats.strategiesLoaded++;
     
@@ -433,6 +510,39 @@ class WorkerManager {
       stats: this.stats,
       workers
     };
+  }
+
+  async restoreStrategiesFromDatabase() {
+    const mapper = getClientStrategyMapper();
+    await mapper.loadFromDatabase();
+
+    const mappings = Array.from(mapper.getAll().values());
+    if (mappings.length === 0) {
+      logger.info('No strategy instances to restore from database');
+      return;
+    }
+
+    logger.info('Restoring strategy instances from database', {
+      count: mappings.length
+    });
+
+    for (const mapping of mappings) {
+      try {
+        await this.startStrategy(mapping.instanceId, {
+          strategyKey: deriveStrategyKey(mapping),
+          clientId: mapping.clientId,
+          strategyId: mapping.strategyId,
+          parameters: mapping.parameters || {},
+          group: mapping.strategyType || 'default',
+          desiredState: mapping.status || 'running'
+        });
+      } catch (error) {
+        logger.error('Failed to restore strategy instance', {
+          instanceId: mapping.instanceId,
+          error: error.message
+        });
+      }
+    }
   }
 }
 

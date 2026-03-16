@@ -49,9 +49,10 @@ router.get("/instruments/:token", async (req, res) => {
   try {
     const { token } = req.params;
 
-    const result = await query("SELECT * FROM instruments WHERE token = $1", [
-      token,
-    ]);
+    const result = await query(
+      "SELECT * FROM instruments WHERE instrument_token = $1",
+      [token],
+    );
 
     if (result.rows.length === 0) {
       return res

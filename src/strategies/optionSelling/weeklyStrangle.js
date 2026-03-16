@@ -1,5 +1,5 @@
-const { logger } = require('../../../core/logger/logger');
-const { BaseStrategy } = require('../../baseStrategy');
+const { logger } = require('../../core/logger/logger');
+const { BaseStrategy } = require('../baseStrategy');
 
 class WeeklyStrangle extends BaseStrategy {
   constructor(config = {}) {
@@ -41,7 +41,7 @@ class WeeklyStrangle extends BaseStrategy {
       this.otmDistance = 300;
     } else if (currentPrice > 25000) {
       this.otmDistance = 200;
-    } else if (price > 15000) {
+    } else if (currentPrice > 15000) {
       this.otmDistance = 150;
     } else {
       this.otmDistance = 100;

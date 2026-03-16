@@ -1,4 +1,5 @@
 const Redis = require('ioredis');
+const { once } = require('events');
 const { logger } = require('../logger/logger');
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
@@ -58,14 +59,29 @@ class RedisClient {
 
   async connect() {
     try {
-      await this.client.connect();
-      await this.subscriber.connect();
-      await this.publisher.connect();
+      await Promise.all([
+        this.ensureConnected(this.client),
+        this.ensureConnected(this.subscriber),
+        this.ensureConnected(this.publisher)
+      ]);
       logger.info('All Redis connections established');
     } catch (error) {
       logger.error('Failed to connect Redis', { error: error.message });
       throw error;
     }
+  }
+
+  async ensureConnected(client) {
+    if (client.status === 'ready') {
+      return;
+    }
+
+    if (client.status === 'connecting' || client.status === 'connect') {
+      await once(client, 'ready');
+      return;
+    }
+
+    await client.connect();
   }
 
   async disconnect() {

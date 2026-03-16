@@ -72,7 +72,7 @@ router.get("/:id", async (req, res) => {
     }
 
     const eventsResult = await query(
-      "SELECT * FROM order_events WHERE order_id = $1 ORDER BY created_at ASC",
+      "SELECT * FROM order_events WHERE order_id = $1 ORDER BY timestamp ASC",
       [id],
     );
 
@@ -168,7 +168,7 @@ router.get("/:id/events", async (req, res) => {
     const { id } = req.params;
 
     const result = await query(
-      "SELECT * FROM order_events WHERE order_id = $1 ORDER BY created_at ASC",
+      "SELECT * FROM order_events WHERE order_id = $1 ORDER BY timestamp ASC",
       [id],
     );
 

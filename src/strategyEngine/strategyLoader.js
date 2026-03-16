@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { logger } = require('../../core/logger/logger');
+const { logger } = require('../core/logger/logger');
+const { BaseStrategy } = require('../strategies/baseStrategy');
 
 class StrategyLoader {
   constructor(options = {}) {
@@ -26,9 +27,13 @@ class StrategyLoader {
       for (const file of files) {
         try {
           const strategyName = file.replace('.js', '');
-          const StrategyClass = require(path.join(categoryPath, file));
+          const loadedModule = require(path.join(categoryPath, file));
+          const StrategyClass = this.resolveStrategyExport(loadedModule);
           
-          if (StrategyClass && StrategyClass.prototype) {
+          if (
+            typeof StrategyClass === 'function' &&
+            StrategyClass.prototype instanceof BaseStrategy
+          ) {
             const key = `${category}_${strategyName}`.toUpperCase();
             this.strategies.set(key, StrategyClass);
             
@@ -58,6 +63,19 @@ class StrategyLoader {
     }
     
     return this.strategies.get(key);
+  }
+
+  resolveStrategyExport(loadedModule) {
+    if (typeof loadedModule === 'function') {
+      return loadedModule;
+    }
+
+    if (!loadedModule || typeof loadedModule !== 'object') {
+      return null;
+    }
+
+    const exportedValues = Object.values(loadedModule);
+    return exportedValues.find((value) => typeof value === 'function') || null;
   }
 
   getAll() {

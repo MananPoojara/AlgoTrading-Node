@@ -2,8 +2,23 @@ const express = require("express");
 const { query } = require("../../database/postgresClient");
 const { logger } = require("../../core/logger/logger");
 const { sanitizeError, handleApiError } = require("../utils/errorHandler");
+const { getWorkerManager } = require("../../strategyEngine/workerManager");
 
 const router = express.Router();
+
+function deriveStrategyKey(row) {
+  if (row.file_path) {
+    const normalizedPath = row.file_path.replace(/\\/g, "/");
+    const pathParts = normalizedPath.split("/");
+    const fileName = pathParts[pathParts.length - 1].replace(/\.js$/i, "");
+    const category = pathParts.length > 1 ? pathParts[pathParts.length - 2] : row.type;
+    return `${category}_${fileName}`.toUpperCase();
+  }
+
+  return `${row.type || "strategy"}_${(row.name || "unknown")
+    .replace(/\s+/g, "_")
+    .toUpperCase()}`;
+}
 
 router.get("/", async (req, res) => {
   try {
@@ -39,7 +54,106 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.post("/start", async (req, res) => {
+  try {
+    const { instance_id } = req.body;
+    if (!instance_id) {
+      return res.status(400).json({
+        success: false,
+        error: "instance_id is required",
+      });
+    }
+
+    const result = await query(
+      `SELECT
+         si.id as instance_id,
+         si.client_id,
+         si.strategy_id,
+         si.parameters,
+         s.name as strategy_name,
+         s.type as strategy_type,
+         s.file_path
+       FROM strategy_instances si
+       JOIN strategies s ON s.id = si.strategy_id
+       WHERE si.id = $1`,
+      [instance_id],
+    );
+
+    if (result.rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Strategy instance not found" });
+    }
+
+    const row = result.rows[0];
+    const manager = getWorkerManager();
+    await manager.initialize();
+
+    const strategyKey = deriveStrategyKey(row);
+    await manager.startStrategy(row.instance_id, {
+      strategyKey,
+      clientId: row.client_id,
+      strategyId: row.strategy_id,
+      parameters: row.parameters || {},
+      group: row.strategy_type || "default",
+    });
+
+    const workerId = manager.strategyToWorker.get(row.instance_id) || null;
+    await query(
+      `UPDATE strategy_instances
+       SET status = 'running', worker_id = $1, started_at = NOW(), updated_at = NOW()
+       WHERE id = $2`,
+      [workerId, row.instance_id],
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        instance_id: row.instance_id,
+        worker_id: workerId,
+        strategy_key: strategyKey,
+        status: "running",
+      },
+    });
+  } catch (error) {
+    logger.error("Failed to start strategy", { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post("/stop", async (req, res) => {
+  try {
+    const { instance_id } = req.body;
+    if (!instance_id) {
+      return res.status(400).json({
+        success: false,
+        error: "instance_id is required",
+      });
+    }
+
+    const manager = getWorkerManager();
+    await manager.stopStrategy(instance_id);
+    await query(
+      `UPDATE strategy_instances
+       SET status = 'stopped', worker_id = NULL, stopped_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [instance_id],
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        instance_id,
+        status: "stopped",
+      },
+    });
+  } catch (error) {
+    logger.error("Failed to stop strategy", { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get("/:id(\\d+)", async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -268,7 +382,7 @@ router.get("/signals", async (req, res) => {
       paramIndex++;
     }
 
-    sql += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    sql += ` ORDER BY timestamp DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(parseInt(limit), parseInt(offset));
 
     const result = await query(sql, params);

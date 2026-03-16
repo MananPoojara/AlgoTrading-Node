@@ -11,6 +11,16 @@ const requireInProduction = (value, name) => {
 
 const config = {
   env: process.env.NODE_ENV || 'development',
+
+  api: {
+    port: parseInt(process.env.API_PORT || process.env.PORT, 10) || 3001,
+    host: process.env.API_HOST || process.env.HOST || '0.0.0.0',
+    allowedOrigins: process.env.ALLOWED_ORIGINS || 'http://localhost:3000'
+  },
+
+  ws: {
+    port: parseInt(process.env.WS_PORT, 10) || 8080
+  },
   
   server: {
     port: parseInt(process.env.PORT, 10) || 3001,
@@ -64,6 +74,15 @@ const config = {
     defaultSignalCooldownSeconds: parseInt(process.env.DEFAULT_SIGNAL_COOLDOWN_SECONDS, 10) || 5
   },
 
+  risk: {
+    maxPositionSize: parseInt(process.env.MAX_POSITION_SIZE, 10) || 1000000,
+    maxDailyLoss: parseInt(process.env.MAX_DAILY_LOSS, 10) || 50000,
+    maxExposure: parseInt(process.env.MAX_EXPOSURE, 10) || 5000000,
+    maxMarginUsage: parseFloat(process.env.MAX_MARGIN_USAGE || '0.8'),
+    maxOpenOrders: parseInt(process.env.MAX_OPEN_ORDERS, 10) || 10,
+    availableMargin: parseInt(process.env.AVAILABLE_MARGIN, 10) || 1000000
+  },
+
   marketHours: {
     open: process.env.MARKET_OPEN_TIME || '09:15',
     close: process.env.MARKET_CLOSE_TIME || '15:30',
@@ -73,7 +92,11 @@ const config = {
   angelOne: {
     apiKey: process.env.ANGEL_ONE_API_KEY || '',
     apiSecret: process.env.ANGEL_ONE_API_SECRET || '',
-    wsUrl: process.env.ANGEL_ONE_WS_URL || 'wss://ws.angelone.in/smart-order'
+    clientCode: process.env.ANGEL_ONE_CLIENT_CODE || '',
+    password: process.env.ANGEL_ONE_PASSWORD || '',
+    totpSecret: process.env.ANGEL_ONE_TOTP_SECRET || '',
+    apiUrl: process.env.ANGEL_ONE_API_URL || 'https://apiconnect.angelone.in',
+    wsUrl: process.env.ANGEL_ONE_WS_URL || 'wss://smartapisocket.angelone.in/smart-stream'
   },
 
   xts: {

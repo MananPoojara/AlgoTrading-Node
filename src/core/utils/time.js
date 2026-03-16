@@ -1,4 +1,4 @@
-const config = require('../../config/default');
+const config = require('../../../config/default');
 
 const TIMEZONE = {
   IST: 'Asia/Kolkata',

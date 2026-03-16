@@ -1,5 +1,5 @@
-const { logger } = require('../../../core/logger/logger');
-const { BaseStrategy } = require('../../baseStrategy');
+const { logger } = require('../../core/logger/logger');
+const { BaseStrategy } = require('../baseStrategy');
 
 class MomentumStrategy extends BaseStrategy {
   constructor(config = {}) {
@@ -113,8 +113,6 @@ class MomentumStrategy extends BaseStrategy {
 
   async onStop() {
     if (this.position) {
-      const currentPrice = this.lastTick?.ltp || 0;
-      const exitStrike = Math.round(currentPrice / 50) * 50;
       const currentPrice = this.lastTick?.ltp || 0;
       const exitStrike = Math.round(currentPrice / 50) * 50;
       logger.info('Closing momentum position on stop', {

@@ -1,20 +1,20 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { logger } = require("./core/logger/logger");
-const { sanitizeError, handleApiError } = require("./api/utils/errorHandler");
-const { requireAuth, isPublicPath } = require("./api/middleware/auth");
-const { rateLimiter, strictLimiter } = require("./api/middleware/rateLimiter");
-const healthRoutes = require("./api/routes/health");
-const marketDataRoutes = require("./api/routes/marketData");
-const orderRoutes = require("./api/routes/orders");
-const strategyRoutes = require("./api/routes/strategies");
-const authRoutes = require("./api/routes/auth");
-const portfolioRoutes = require("./api/routes/portfolio");
-const config = require("../config/default");
+const { logger } = require("../core/logger/logger");
+const { sanitizeError, handleApiError } = require("./utils/errorHandler");
+const { requireAuth, isPublicPath } = require("./middleware/auth");
+const { rateLimiter, strictLimiter } = require("./middleware/rateLimiter");
+const healthRoutes = require("./routes/health");
+const marketDataRoutes = require("./routes/marketData");
+const orderRoutes = require("./routes/orders");
+const strategyRoutes = require("./routes/strategies");
+const authRoutes = require("./routes/auth");
+const portfolioRoutes = require("./routes/portfolio");
+const config = require("../../config/default");
 
 const app = express();
-const PORT = config.api?.port || 3000;
+const PORT = config.api?.port || 3001;
 
 const corsOptions = {
   origin:
@@ -61,7 +61,7 @@ app.use("/api/portfolio", portfolioRoutes);
 
 app.get("/api/clients", async (req, res) => {
   try {
-    const { query } = require("./database/postgresClient");
+    const { query } = require("../database/postgresClient");
     const result = await query(
       "SELECT id, name, email, status, created_at FROM clients ORDER BY name",
     );
@@ -74,7 +74,7 @@ app.get("/api/clients", async (req, res) => {
 
 app.get("/api/clients/:id", async (req, res) => {
   try {
-    const { query } = require("./database/postgresClient");
+    const { query } = require("../database/postgresClient");
     const { id } = req.params;
 
     const clientResult = await query(
@@ -109,7 +109,7 @@ app.get("/api/clients/:id", async (req, res) => {
 app.get("/api/positions", async (req, res) => {
   try {
     const { client_id } = req.query;
-    const { query } = require("./database/postgresClient");
+    const { query } = require("../database/postgresClient");
 
     let sql = "SELECT * FROM positions";
     const params = [];
@@ -136,7 +136,7 @@ app.get("/api/positions", async (req, res) => {
 app.get("/api/portfolio/:clientId", async (req, res) => {
   try {
     const { clientId } = req.params;
-    const { query } = require("./database/postgresClient");
+    const { query } = require("../database/postgresClient");
 
     const positionsResult = await query(
       `SELECT 

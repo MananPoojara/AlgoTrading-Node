@@ -33,9 +33,14 @@ function validateApiKey() {
   return apiKey;
 }
 
+function normalizeClientId(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 router.get("/login", (req, res) => {
   try {
-    const clientId = req.query.client_id || "default";
+    const clientId = normalizeClientId(req.query.client_id);
     const redirectUrl =
       process.env.ANGEL_ONE_REDIRECT_URL ||
       "http://localhost:3000/api/auth/callback";
@@ -96,25 +101,21 @@ router.get("/callback", async (req, res) => {
         });
       }
 
+      const stateRow = stateResult.rows[0];
       await query("DELETE FROM oauth_states WHERE state = $1", [state]);
+      req.oauthClientId = stateRow.client_id;
     }
 
-    const clientId = state
-      ? (
-          await query("SELECT client_id FROM oauth_states WHERE state = $1", [
-            state,
-          ])
-        ).rows[0]?.client_id
-      : "default";
+    const clientId = normalizeClientId(req.oauthClientId);
 
     await query(
       `INSERT INTO api_tokens (client_id, token, status, expires_at, created_at)
        VALUES ($1, $2, 'active', NOW() + INTERVAL '24 hours', NOW())
        ON CONFLICT (token) DO UPDATE SET expires_at = NOW() + INTERVAL '24 hours', last_used_at = NOW()`,
-      [clientId || "default", token],
+      [clientId, token],
     );
 
-    logger.info("OAuth token stored", { clientId: clientId || "default" });
+    logger.info("OAuth token stored", { clientId });
 
     const frontendUrl = validateRedirectUrl(process.env.FRONTEND_URL);
     if (!frontendUrl) {
@@ -166,8 +167,8 @@ router.post("/refresh", async (req, res) => {
     }
 
     const existingToken = await query(
-      "SELECT * FROM api_tokens WHERE token = $1 AND status = $active",
-      [refresh_token],
+      "SELECT * FROM api_tokens WHERE token = $1 AND status = $2",
+      [refresh_token, "active"],
     );
 
     if (existingToken.rows.length === 0) {

@@ -18,6 +18,16 @@ pool.on('error', (err) => {
   logger.error('Unexpected database error', { error: err.message });
 });
 
+pool.on('connect', (client) => {
+  client
+    .query("SET TIME ZONE 'Asia/Kolkata'")
+    .catch((error) => {
+      logger.error('Failed to set database session timezone', {
+        error: error.message,
+      });
+    });
+});
+
 const query = async (text, params = []) => {
   const start = Date.now();
   try {
