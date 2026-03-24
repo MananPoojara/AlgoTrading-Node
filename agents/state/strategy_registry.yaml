@@ -1,0 +1,30 @@
+strategies:
+  - strategy_id: strategy1
+    strategy_version: "1.0.0"
+    status: PAPER
+    stage: STAGE_2
+    owner_role: MID_BACKEND_ENGINEER
+    instrument: NIFTY options
+    timeframe: 1m
+    clients_paper: []
+    clients_live: []
+    assigned_worker: ""
+    dashboard_panel: "Strategies > Strategy1"
+    runbooks:
+      - docs/operations/briefings/strategy1Live_briefing.md
+    alerts: []
+    briefing_sheet: docs/operations/briefings/strategy1Live_briefing.md
+    spec_ref: agents/artifacts/strategy_specs/strategy1_spec_v1.0.0.md
+    parity_report_ref: ""
+    data_reliability_cutoff: ""
+    fill_price_source_tracking_since: ""
+    net_pnl_available: false
+    candle_channels:
+      - candles:1m:NIFTY
+    critical_streams:
+      - stream:strategy_signals
+      - stream:order_updates
+    notes: >
+      Strategy1 mapping was acknowledged by Senior Backend on 2026-03-24.
+      No new platform gap blocks the current work. The active Stage 2 task is the paper-parity rework
+      for execution-update handling, state transition into IN_POSITION, SELL parity, and frontend visibility.

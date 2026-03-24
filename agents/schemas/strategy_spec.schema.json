@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "artifact_type",
+    "strategy_id",
+    "strategy_version",
+    "timeframe",
+    "instrument_type",
+    "requires_platform_gaps",
+    "ambiguities_resolved",
+    "qa_author",
+    "date_created",
+    "status"
+  ],
+  "properties": {
+    "artifact_type": {
+      "const": "strategy_spec"
+    },
+    "strategy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "strategy_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timeframe": {
+      "type": "string",
+      "minLength": 1
+    },
+    "instrument_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requires_platform_gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ambiguities_resolved": {
+      "type": "boolean"
+    },
+    "founder_approval_ref": {
+      "type": "string"
+    },
+    "qa_author": {
+      "type": "string",
+      "minLength": 1
+    },
+    "date_created": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "DRAFT",
+        "READY_FOR_REVIEW",
+        "APPROVED",
+        "SUPERSEDED"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

@@ -15,10 +15,12 @@ yarn-error.log*
 dist/
 build/
 .next/
+.next-verify/
 out/
 
 # Logs
 logs/
+var/logs/
 *.log
 
 # Database
@@ -49,3 +51,16 @@ coverage/
 
 # Legacy local research/backtest assets
 old-way-we-doing-for-algotrading/
+
+# Runtime market data archives
+data/market-archive/
+
+var/tmp/
+var/backups/
+var/exports/
+
+apps/dashboard/.next/
+apps/dashboard/.next-verify/
+apps/dashboard/node_modules/
+tests/contract/smartapi/node_modules/
+tests/contract/smartapi/output/

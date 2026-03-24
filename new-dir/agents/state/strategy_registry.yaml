@@ -1,0 +1,12 @@
+strategies: []
+# Example entry:
+# - strategy_id: strategy1_clientA
+#   status: INTAKE
+#   stage: STAGE_1
+#   owner_role: QA_ENGINEER
+#   runbook_ref: ""
+#   briefing_sheet_ref: ""
+#   clients_paper: []
+#   clients_live: []
+#   data_reliability_cutoff_ref: ""
+#   notes: ""

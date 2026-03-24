@@ -1,0 +1,15 @@
+.git
+.gitignore
+.codex
+src/dashboard/node_modules
+src/dashboard/.next
+logs
+data/market-archive
+coverage
+tmp
+*.log
+
+session-ses_*.md
+
+old-way-we-doing-for-algotrading/**
+!old-way-we-doing-for-algotrading/Symphony_30-09-2025/Test/NIFTY 50.csv

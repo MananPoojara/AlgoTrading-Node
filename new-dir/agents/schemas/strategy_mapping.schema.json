@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "artifact_type",
+    "strategy_id",
+    "strategy_version",
+    "spec_ref",
+    "candle_channels",
+    "critical_streams",
+    "new_platform_dependencies",
+    "differences_from_strategy1live",
+    "senior_backend_acknowledged",
+    "date_created",
+    "status"
+  ],
+  "properties": {
+    "artifact_type": {
+      "const": "strategy_mapping"
+    },
+    "strategy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "strategy_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "spec_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candle_channels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "critical_streams": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "new_platform_dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "differences_from_strategy1live": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "senior_backend_acknowledged": {
+      "type": "boolean"
+    },
+    "date_created": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "PENDING_ACKNOWLEDGEMENT",
+        "READY_FOR_REVIEW",
+        "APPROVED",
+        "SUPERSEDED"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

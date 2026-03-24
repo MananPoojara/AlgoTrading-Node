@@ -1,0 +1,12 @@
+{
+  "active_locks": [],
+  "locks": [
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "After-hours Strategy1 validation using Angel historical data with source visibility in the dashboard",
+      "locked_at_utc": "2026-03-24T11:43:00Z"
+    }
+  ]
+}

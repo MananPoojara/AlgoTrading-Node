@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "artifact_type",
+    "strategy_id",
+    "strategy_version",
+    "paper_period_start",
+    "paper_period_end",
+    "trading_days",
+    "total_signals",
+    "total_trades",
+    "open_positions_at_close",
+    "qa_recommendation",
+    "date_created",
+    "status"
+  ],
+  "properties": {
+    "artifact_type": {
+      "const": "paper_signoff"
+    },
+    "strategy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "strategy_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "paper_period_start": {
+      "type": "string",
+      "minLength": 1
+    },
+    "paper_period_end": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trading_days": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_signals": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_trades": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "open_positions_at_close": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "signal_parity_report_ref": {
+      "type": "string"
+    },
+    "fill_quality_live_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "fill_quality_stale_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "fill_quality_estimated_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "fill_quality_failed_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "risk_hard_blocks": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "risk_warnings": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "qa_recommendation": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "founder_approval": {
+      "type": "string"
+    },
+    "founder_approval_ref": {
+      "type": "string"
+    },
+    "date_created": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "AWAITING_FOUNDER_DECISION",
+        "APPROVED",
+        "REJECTED",
+        "SUPERSEDED"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

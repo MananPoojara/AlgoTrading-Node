@@ -1,0 +1,14 @@
+{
+  "current_strategy_id": "",
+  "current_stage": "STAGE_0",
+  "allowed_active_role": "QA_ENGINEER",
+  "blocked_reason": null,
+  "required_artifacts": [],
+  "human_gates": {
+    "founder_spec_logic_resolved": false,
+    "senior_backend_pr_approved": false,
+    "founder_live_approved": false,
+    "devops_deploy_executed": false
+  },
+  "updated_at_utc": ""
+}

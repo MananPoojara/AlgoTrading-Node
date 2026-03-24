@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "current_strategy_id",
+    "current_stage",
+    "allowed_active_role",
+    "blocked_reason",
+    "updated_at_utc"
+  ],
+  "properties": {
+    "current_strategy_id": {
+      "type": "string"
+    },
+    "current_stage": {
+      "enum": [
+        "STAGE_0",
+        "STAGE_1",
+        "STAGE_1B",
+        "STAGE_2",
+        "STAGE_3",
+        "STAGE_4",
+        "STAGE_5",
+        "STAGE_6",
+        "STAGE_7",
+        "STAGE_8",
+        "STAGE_9",
+        "STAGE_10"
+      ]
+    },
+    "allowed_active_role": {
+      "type": "string"
+    },
+    "blocked_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "required_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "human_gates": {
+      "type": "object"
+    },
+    "updated_at_utc": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}

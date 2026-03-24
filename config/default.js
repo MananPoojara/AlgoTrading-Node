@@ -9,6 +9,13 @@ const requireInProduction = (value, name) => {
   return value;
 };
 
+const clampIntradaySquareOff = (value, fallback = "15:15") => {
+  const normalized = String(value || fallback);
+  return normalized > fallback ? fallback : normalized;
+};
+
+const configuredSquareOff = clampIntradaySquareOff(process.env.AUTO_SQUARE_OFF_TIME);
+
 const config = {
   env: process.env.NODE_ENV || 'development',
 
@@ -75,18 +82,37 @@ const config = {
   },
 
   risk: {
+    policyMode:
+      process.env.RISK_POLICY_MODE ||
+      (process.env.PAPER_MODE === 'true' ? 'paper_warn_only' : 'live_enforce'),
     maxPositionSize: parseInt(process.env.MAX_POSITION_SIZE, 10) || 1000000,
     maxDailyLoss: parseInt(process.env.MAX_DAILY_LOSS, 10) || 50000,
     maxExposure: parseInt(process.env.MAX_EXPOSURE, 10) || 5000000,
     maxMarginUsage: parseFloat(process.env.MAX_MARGIN_USAGE || '0.8'),
     maxOpenOrders: parseInt(process.env.MAX_OPEN_ORDERS, 10) || 10,
-    availableMargin: parseInt(process.env.AVAILABLE_MARGIN, 10) || 1000000
+    availableMargin: parseInt(process.env.AVAILABLE_MARGIN, 10) || 1000000,
+    operatorApprovalTimeoutSeconds:
+      parseInt(process.env.OPERATOR_APPROVAL_TIMEOUT_SECONDS, 10) || 30,
+    allowShortSelling: process.env.ALLOW_SHORT_SELLING === 'true'
   },
 
   marketHours: {
     open: process.env.MARKET_OPEN_TIME || '09:15',
     close: process.env.MARKET_CLOSE_TIME || '15:30',
-    squareOff: process.env.AUTO_SQUARE_OFF_TIME || '15:15'
+    squareOff: configuredSquareOff
+  },
+
+  scheduler: {
+    enabled: process.env.MARKET_SCHEDULER_ENABLED !== 'false',
+    pollMs: parseInt(process.env.MARKET_SCHEDULER_POLL_MS, 10) || 30000,
+    feedStart: process.env.MARKET_FEED_START_TIME || '09:00',
+    strategyStart: process.env.STRATEGY_START_TIME || '09:15',
+    squareOff: configuredSquareOff,
+    strategyPause: process.env.STRATEGY_STOP_TIME || '15:45',
+    feedStop: process.env.MARKET_FEED_STOP_TIME || '16:10',
+    archiveRoot: process.env.MARKET_TICK_ARCHIVE_ROOT || './data/market-archive',
+    archiveBatchSize:
+      parseInt(process.env.MARKET_TICK_ARCHIVE_BATCH_SIZE, 10) || 50000,
   },
 
   angelOne: {
@@ -99,6 +125,34 @@ const config = {
     wsUrl: process.env.ANGEL_ONE_WS_URL || 'wss://smartapisocket.angelone.in/smart-stream'
   },
 
+  angelOneHistorical: {
+    enabled: process.env.ANGEL_ONE_HISTORICAL_ENABLED !== 'false',
+    apiKey:
+      process.env.ANGEL_ONE_HISTORICAL_API_KEY || process.env.ANGEL_ONE_API_KEY || '',
+    clientCode:
+      process.env.ANGEL_ONE_HISTORICAL_CLIENT_CODE ||
+      process.env.ANGEL_ONE_CLIENT_CODE ||
+      '',
+    password:
+      process.env.ANGEL_ONE_HISTORICAL_PASSWORD || process.env.ANGEL_ONE_PASSWORD || '',
+    totpSecret:
+      process.env.ANGEL_ONE_HISTORICAL_TOTP_SECRET ||
+      process.env.ANGEL_ONE_TOTP_SECRET ||
+      '',
+    lookbackDays: parseInt(process.env.ANGEL_ONE_HISTORICAL_LOOKBACK_DAYS, 10) || 730,
+    maxDaysPerRequest:
+      parseInt(process.env.ANGEL_ONE_HISTORICAL_MAX_DAYS_PER_REQUEST, 10) || 365,
+    maxRequestsPerSecond:
+      parseInt(process.env.ANGEL_ONE_HISTORICAL_MAX_REQUESTS_PER_SECOND, 10) || 3,
+    maxRequestsPerMinute:
+      parseInt(process.env.ANGEL_ONE_HISTORICAL_MAX_REQUESTS_PER_MINUTE, 10) || 180,
+    rateLimitRetryDelayMs:
+      parseInt(process.env.ANGEL_ONE_HISTORICAL_RATE_LIMIT_RETRY_DELAY_MS, 10) ||
+      61000,
+    maxRetries:
+      parseInt(process.env.ANGEL_ONE_HISTORICAL_MAX_RETRIES, 10) || 2,
+  },
+
   xts: {
     apiKey: process.env.XTS_API_KEY || '',
     apiSecret: process.env.XTS_API_SECRET || '',
@@ -108,7 +162,11 @@ const config = {
 
   logging: {
     level: process.env.LOG_LEVEL || 'info',
-    filePath: process.env.LOG_FILE_PATH || './logs'
+    filePath: process.env.LOG_FILE_PATH || './logs',
+    apiRequestLevel: process.env.API_REQUEST_LOG_LEVEL || 'debug',
+    websocketClientLevel:
+      process.env.WS_CLIENT_LOG_LEVEL || process.env.WEBSOCKET_CLIENT_LOG_LEVEL || 'debug',
+    marketDataRefreshLevel: process.env.MARKET_DATA_REFRESH_LOG_LEVEL || 'debug',
   },
 
   heartbeat: {

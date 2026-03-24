@@ -2,16 +2,17 @@
   "name": "algo-trading-platform",
   "version": "1.0.0",
   "description": "Algorithmic Trading Platform with multi-client support",
-  "main": "src/index.js",
+  "main": "packages/core/bootstrap/healthCheck.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "start": "node packages/core/bootstrap/healthCheck.js",
+    "dev": "nodemon packages/core/bootstrap/healthCheck.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "migrate": "node src/database/migrate.js",
-    "seed": "node src/database/seed.js",
-    "lint": "eslint src/",
-    "format": "prettier --write src/"
+    "migrate": "node packages/database/migrate.js",
+    "reset:paper": "node packages/database/resetPaperOmsState.js",
+    "seed": "node packages/database/seed.js",
+    "lint": "eslint apps packages tests/unit",
+    "format": "prettier --write apps packages tests/unit"
   },
   "dependencies": {
     "amqplib": "^0.10.3",

@@ -1,0 +1,19 @@
+{
+  "current_strategy_id": "strategy1",
+  "current_stage": "STAGE_2",
+  "allowed_active_role": "MID_BACKEND_ENGINEER",
+  "blocked_reason": "Stage 2 rework applied on 2026-03-24: order-update stream idempotency now uses stream message identity so filled updates are not skipped after acknowledged, the market-data reconnect path no longer crashes when the connect callback fires before service.ws is assigned, the dashboard renders Strategy1 runtime state plus live order tape, and the validation page includes a dedicated parity board plus session replay. After 16:15 IST, Strategy1 validation now prefers Angel historical one-minute candles for the selected trading day, falls back to retained market_ohlc_1m candles only if historical data is unavailable, and shows the selected candle source plus counts in the dashboard. Next required evidence is the first after-hours validation run against PineScript for BUY/SELL parity using the historical-backed replay source.",
+  "required_artifacts": [
+    "docs/operations/briefings/strategy1Live_briefing.md",
+    "docs/references/strategy-notes/strategy1_live_current.pine",
+    "agents/artifacts/strategy_specs/strategy1_spec_v1.0.0.md",
+    "agents/artifacts/mapping_docs/strategy1_mapping_v1.0.0.md"
+  ],
+  "human_gates": {
+    "founder_spec_logic_resolved": true,
+    "senior_backend_pr_approved": false,
+    "founder_live_approved": false,
+    "devops_deploy_executed": false
+  },
+  "updated_at_utc": "2026-03-24T11:45:30+00:00"
+}

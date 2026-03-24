@@ -1,0 +1,23 @@
+FROM node:18-alpine
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY package*.json ./
+COPY node_modules ./node_modules
+
+COPY apps/ ./apps/
+COPY packages/ ./packages/
+COPY config/ ./config/
+COPY ["legacy/old-way-we-doing-for-algotrading/Symphony_30-09-2025/Test/NIFTY 50.csv", "./data/history/NIFTY_50.csv"]
+
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs && \
+    mkdir -p /app/logs /app/var/logs && \
+    chown -R nodejs:nodejs /app/logs /app/var/logs
+USER nodejs
+
+# Expose default port
+EXPOSE 3000
+
+CMD ["node", "packages/core/bootstrap/healthCheck.js"]
