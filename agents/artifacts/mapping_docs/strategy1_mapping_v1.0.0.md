@@ -1,18 +1,18 @@
 ---
 artifact_type: strategy_mapping
-strategy_id: "strategy1"
-strategy_version: "1.0.0"
-spec_ref: "agents/artifacts/strategy_specs/strategy1_spec_v1.0.0.md"
+strategy_id: strategy1
+strategy_version: 1.0.0
+spec_ref: agents/artifacts/strategy_specs/strategy1_spec_v1.0.0.md
 candle_channels:
-  - "candles:1m:NIFTY"
+- candles:1m:NIFTY
 critical_streams:
-  - "stream:strategy_signals"
-  - "stream:order_updates"
+- stream:strategy_signals
+- stream:order_updates
 new_platform_dependencies: []
 differences_from_strategy1live: []
 senior_backend_acknowledged: true
-date_created: "2026-03-24"
-status: "APPROVED"
+date_created: '2026-03-24'
+status: SUPERSEDED
 ---
 
 # Strategy Mapping Document

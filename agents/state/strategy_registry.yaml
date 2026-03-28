@@ -1,30 +1,43 @@
 strategies:
-  - strategy_id: strategy1
-    strategy_version: "1.0.0"
-    status: PAPER
-    stage: STAGE_2
-    owner_role: MID_BACKEND_ENGINEER
-    instrument: NIFTY options
-    timeframe: 1m
-    clients_paper: []
-    clients_live: []
-    assigned_worker: ""
-    dashboard_panel: "Strategies > Strategy1"
-    runbooks:
-      - docs/operations/briefings/strategy1Live_briefing.md
-    alerts: []
-    briefing_sheet: docs/operations/briefings/strategy1Live_briefing.md
-    spec_ref: agents/artifacts/strategy_specs/strategy1_spec_v1.0.0.md
-    parity_report_ref: ""
-    data_reliability_cutoff: ""
-    fill_price_source_tracking_since: ""
-    net_pnl_available: false
-    candle_channels:
-      - candles:1m:NIFTY
-    critical_streams:
-      - stream:strategy_signals
-      - stream:order_updates
-    notes: >
-      Strategy1 mapping was acknowledged by Senior Backend on 2026-03-24.
-      No new platform gap blocks the current work. The active Stage 2 task is the paper-parity rework
-      for execution-update handling, state transition into IN_POSITION, SELL parity, and frontend visibility.
+- strategy_id: strategy1
+  strategy_version: 1.2.0
+  status: PAPER
+  stage: STAGE_2
+  owner_role: MID_BACKEND_ENGINEER
+  instrument: NIFTY options
+  timeframe: 1day_default_with_optional_1min_5min_15min
+  clients_paper: []
+  clients_live: []
+  assigned_worker: ''
+  dashboard_panel: Strategies > Strategy1
+  runbooks:
+  - docs/operations/briefings/strategy1Live_briefing.md
+  alerts: []
+  briefing_sheet: docs/operations/briefings/strategy1Live_briefing.md
+  spec_ref: agents/artifacts/strategy_specs/strategy1_spec_v1.2.0.md
+  parity_report_ref: ''
+  data_reliability_cutoff: ''
+  fill_price_source_tracking_since: ''
+  net_pnl_available: false
+  candle_channels:
+  - candles:1m:NIFTY
+  critical_streams:
+  - stream:strategy_signals
+  - stream:order_updates
+  notes: 'Strategy1 remains in Stage 2 after the v1.2.0 implementation batch on 2026-03-27.
+    Completed in this batch: VWAP-gated BUY logic, daily 15:00-15:15 IST decision
+    timing, minute-based daily_30d validation replay, per-day VWAP gate/source
+    diagnostics for daily validation, validation-page non-blank chart/error
+    states for degraded replay data, replay candidate-signal visibility when
+    VWAP is unavailable, session-scoped VWAP handling that prevents stale
+    prior-day VWAP reuse, mismatch detection plus manual-correction APIs,
+    validation-page VWAP/mismatch/manual-correction visibility, a read-only
+    main-dashboard operator cockpit with live 1-minute candles, VWAP, runtime
+    state, order/signal tapes, corrections, mismatch banner, and restart-required
+    visibility, plus local dashboard startup hardening through a production
+    dashboard image, maintenance fallback page, staged start-dev orchestration,
+    offline-safe typography, and a corrected local service-image build path
+    that reuses root workspace node_modules for local paper/dev speed. Remaining
+    before Stage 3 review: 5min/15min completeness checks and operator-facing
+    manual correction submission UI.'
+  mapping_ref: agents/artifacts/mapping_docs/strategy1_mapping_v1.2.0.md

@@ -2,12 +2,12 @@
   "current_strategy_id": "strategy1",
   "current_stage": "STAGE_2",
   "allowed_active_role": "MID_BACKEND_ENGINEER",
-  "blocked_reason": "Stage 2 rework applied on 2026-03-24: order-update stream idempotency now uses stream message identity so filled updates are not skipped after acknowledged, the market-data reconnect path no longer crashes when the connect callback fires before service.ws is assigned, the dashboard renders Strategy1 runtime state plus live order tape, and the validation page includes a dedicated parity board plus session replay. After 16:15 IST, Strategy1 validation now prefers Angel historical one-minute candles for the selected trading day, falls back to retained market_ohlc_1m candles only if historical data is unavailable, and shows the selected candle source plus counts in the dashboard. Next required evidence is the first after-hours validation run against PineScript for BUY/SELL parity using the historical-backed replay source.",
+  "blocked_reason": "Stage 2 implementation is partially complete: Strategy1 now has VWAP-gated runtime/replay logic, minute-first daily validation replay with per-day VWAP/source diagnostics, validation-page non-blank chart/error states for degraded data, replay candidate-signal visibility when VWAP is unavailable, session-scoped VWAP handling that no longer reuses stale prior-day VWAP, mismatch detection APIs, validation-page VWAP/mismatch/manual-correction visibility, a read-only main-dashboard operator cockpit with live 1-minute candles/VWAP/runtime visibility, and local startup hardening for the dashboard via a self-contained production image, maintenance fallback page, staged start-dev orchestration, and offline-safe typography. Remaining blockers before Stage 3 review: 5min/15min bucket completeness checks and operator-facing manual correction submission UI.",
   "required_artifacts": [
     "docs/operations/briefings/strategy1Live_briefing.md",
     "docs/references/strategy-notes/strategy1_live_current.pine",
-    "agents/artifacts/strategy_specs/strategy1_spec_v1.0.0.md",
-    "agents/artifacts/mapping_docs/strategy1_mapping_v1.0.0.md"
+    "agents/artifacts/strategy_specs/strategy1_spec_v1.2.0.md",
+    "agents/artifacts/mapping_docs/strategy1_mapping_v1.2.0.md"
   ],
   "human_gates": {
     "founder_spec_logic_resolved": true,
@@ -15,5 +15,5 @@
     "founder_live_approved": false,
     "devops_deploy_executed": false
   },
-  "updated_at_utc": "2026-03-24T11:45:30+00:00"
+  "updated_at_utc": "2026-03-27T11:05:07Z"
 }

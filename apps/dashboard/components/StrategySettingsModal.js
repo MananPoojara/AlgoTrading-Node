@@ -9,6 +9,7 @@ const INITIAL_FORM = {
   capital: "",
   stopLoss: "",
   maxDailyLoss: "",
+  timeframe: "1day",
 };
 
 function toInputValue(value, fallback = "") {
@@ -55,6 +56,7 @@ export default function StrategySettingsModal({
         parameters.maxDailyLoss ?? riskLimits.max_daily_loss,
         "",
       ),
+      timeframe: parameters.timeframe || "1day",
     });
   }, [instance]);
 
@@ -81,6 +83,7 @@ export default function StrategySettingsModal({
         capital: toOptionalNumber(form.capital),
         stopLoss: toOptionalNumber(form.stopLoss),
         maxDailyLoss: toOptionalNumber(form.maxDailyLoss),
+        timeframe: form.timeframe,
       });
       onClose();
     } finally {
@@ -142,7 +145,23 @@ export default function StrategySettingsModal({
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-4">
+            <div>
+              <label className="label">Timeframe</label>
+              <select
+                className="input"
+                value={form.timeframe}
+                onChange={(event) => updateField("timeframe", event.target.value)}
+              >
+                <option value="1day">1day</option>
+                <option value="1min">1min</option>
+                <option value="5min">5min</option>
+                <option value="15min">15min</option>
+              </select>
+              <p className="mt-2 text-[11px] text-amber-300">
+                Timeframe changes save now and apply after stop/start.
+              </p>
+            </div>
             <div>
               <label className="label">Capital</label>
               <input

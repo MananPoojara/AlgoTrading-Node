@@ -1,15 +1,16 @@
 ---
 artifact_type: strategy_spec
-strategy_id: "strategy1"
-strategy_version: "1.0.0"
-timeframe: "1m"
-instrument_type: "options"
+strategy_id: strategy1
+strategy_version: 1.0.0
+timeframe: 1m
+instrument_type: options
 requires_platform_gaps: []
 ambiguities_resolved: true
-founder_approval_ref: "2026-03-24 founder instruction: use existing Strategy1 briefing and PineScript as source for workflow backfill"
-qa_author: "Backfilled from existing QA briefing under founder instruction"
-date_created: "2026-03-24"
-status: "APPROVED"
+founder_approval_ref: '2026-03-24 founder instruction: use existing Strategy1 briefing
+  and PineScript as source for workflow backfill'
+qa_author: Backfilled from existing QA briefing under founder instruction
+date_created: '2026-03-24'
+status: SUPERSEDED
 ---
 
 # Strategy Specification

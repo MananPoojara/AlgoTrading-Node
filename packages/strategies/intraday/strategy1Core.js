@@ -3,7 +3,7 @@ function round2(value) {
 }
 
 function getBarKey(bar = {}) {
-  return bar.barTime || bar.date || null;
+  return bar.signalAnchorTime || bar.barTime || bar.date || null;
 }
 
 function getStrategy1Params(ticker, fixedMax = false, manualMax = 3) {
@@ -49,8 +49,7 @@ function computeIndicators(bars, params) {
         index - params.atrPeriod - 1 >= 0
           ? Number(bars[index - params.atrPeriod - 1].close)
           : null;
-      const exitingHighLow =
-        Number(exitingBar.high) - Number(exitingBar.low);
+      const exitingHighLow = Number(exitingBar.high) - Number(exitingBar.low);
       const exitingHighPrev =
         exitingPrevClose === null
           ? 0
@@ -59,11 +58,7 @@ function computeIndicators(bars, params) {
         exitingPrevClose === null
           ? 0
           : Math.abs(Number(exitingBar.low) - exitingPrevClose);
-      trueRangeSum -= Math.max(
-        exitingHighLow,
-        exitingHighPrev,
-        exitingLowPrev,
-      );
+      trueRangeSum -= Math.max(exitingHighLow, exitingHighPrev, exitingLowPrev);
     }
 
     if (index >= params.atrPeriod - 1) {
@@ -112,7 +107,9 @@ function evaluateStrategy1(bars, state = {}, options = {}) {
     };
   }
 
-  const entryIndex = bars.findIndex((bar) => getBarKey(bar) === state.entryDate);
+  const entryIndex = bars.findIndex(
+    (bar) => getBarKey(bar) === state.entryDate,
+  );
   if (entryIndex < 0 || indicators.trailingBase[entryIndex] === null) {
     return { action: null, reason: "entry_context_missing", indicators };
   }

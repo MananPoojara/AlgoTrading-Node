@@ -15,9 +15,12 @@ jest.mock("../../packages/strategies/intraday/atmOptionResolver", () => ({
   }),
 }));
 
-jest.mock("../../apps/market-data-service/src/angelHistoricalDataClient", () => ({
-  getAngelHistoricalDataClient: jest.fn(),
-}));
+jest.mock(
+  "../../apps/market-data-service/src/angelHistoricalDataClient",
+  () => ({
+    getAngelHistoricalDataClient: jest.fn(),
+  }),
+);
 
 jest.mock("../../packages/database/postgresClient", () => ({
   query: jest.fn().mockResolvedValue({ rows: [] }),
@@ -25,20 +28,90 @@ jest.mock("../../packages/database/postgresClient", () => ({
 
 jest.mock("fs", () => ({
   existsSync: jest.fn(() => true),
-  readFileSync: jest.fn(
-    () =>
-      [
-        "Ticker,Date,Time,Open,High,Low,Close",
-        "NIFTY 50,2026-03-10,09:15:00,100,101,99,101",
-        "NIFTY 50,2026-03-10,09:16:00,101,102,100,102",
-        "NIFTY 50,2026-03-10,09:17:00,102,103,101,103",
-      ].join("\n"),
+  readFileSync: jest.fn(() =>
+    [
+      "Ticker,Date,Time,Open,High,Low,Close",
+      "NIFTY 50,2026-03-10,09:15:00,100,101,99,101",
+      "NIFTY 50,2026-03-10,09:16:00,101,102,100,102",
+      "NIFTY 50,2026-03-10,09:17:00,102,103,101,103",
+    ].join("\n"),
   ),
 }));
 
-const { Strategy1Live } = require("../../packages/strategies/intraday/strategy1Live");
+const {
+  Strategy1Live,
+} = require("../../packages/strategies/intraday/strategy1Live");
 const { logger } = require("../../packages/core/logger/logger");
 const { query } = require("../../packages/database/postgresClient");
+
+function makeMinuteBar(barTime, open, high, low, close, volume = 1000) {
+  return {
+    date: String(barTime).slice(0, 10),
+    barTime,
+    open,
+    high,
+    low,
+    close,
+    volume,
+  };
+}
+
+function makeDailySeed(date, open, close) {
+  return [
+    makeMinuteBar(
+      `${date}T09:15:00+05:30`,
+      open,
+      Math.max(open, close) + 1,
+      Math.min(open, close) - 1,
+      open,
+    ),
+    makeMinuteBar(
+      `${date}T15:00:00+05:30`,
+      open,
+      Math.max(open, close) + 1,
+      Math.min(open, close) - 1,
+      close,
+    ),
+  ];
+}
+
+async function seedBuyEligibleIntradayTicks(strategy) {
+  await strategy.processTick({
+    timestamp: "2026-03-11T09:15:10+05:30",
+    ltp: 95,
+    volume: 100,
+  });
+  await strategy.processTick({
+    timestamp: "2026-03-11T09:15:50+05:30",
+    ltp: 94,
+    volume: 120,
+  });
+  await strategy.processTick({
+    timestamp: "2026-03-11T09:16:00+05:30",
+    ltp: 103,
+    volume: 130,
+  });
+  await strategy.processTick({
+    timestamp: "2026-03-11T09:16:20+05:30",
+    ltp: 102,
+    volume: 140,
+  });
+  await strategy.processTick({
+    timestamp: "2026-03-11T09:17:00+05:30",
+    ltp: 101,
+    volume: 150,
+  });
+  await strategy.processTick({
+    timestamp: "2026-03-11T09:17:20+05:30",
+    ltp: 100,
+    volume: 160,
+  });
+  return strategy.processTick({
+    timestamp: "2026-03-11T09:18:00+05:30",
+    ltp: 99,
+    volume: 1000,
+  });
+}
 
 describe("Strategy1Live", () => {
   beforeEach(() => {
@@ -54,6 +127,7 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 
@@ -67,6 +141,7 @@ describe("Strategy1Live", () => {
         high: 101,
         low: 99,
         close: 101,
+        volume: 0,
       },
       {
         date: "2026-03-10",
@@ -75,6 +150,7 @@ describe("Strategy1Live", () => {
         high: 102,
         low: 100,
         close: 102,
+        volume: 0,
       },
       {
         date: "2026-03-10",
@@ -83,6 +159,7 @@ describe("Strategy1Live", () => {
         high: 103,
         low: 101,
         close: 103,
+        volume: 0,
       },
     ]);
   });
@@ -95,39 +172,13 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 
     await strategy.initialize();
 
-    await strategy.processTick({
-      timestamp: "2026-03-11T09:15:10+05:30",
-      ltp: 105,
-    });
-    await strategy.processTick({
-      timestamp: "2026-03-11T09:15:50+05:30",
-      ltp: 104,
-    });
-    await strategy.processTick({
-      timestamp: "2026-03-11T09:16:00+05:30",
-      ltp: 103,
-    });
-    await strategy.processTick({
-      timestamp: "2026-03-11T09:16:20+05:30",
-      ltp: 102,
-    });
-    await strategy.processTick({
-      timestamp: "2026-03-11T09:17:00+05:30",
-      ltp: 101,
-    });
-    await strategy.processTick({
-      timestamp: "2026-03-11T09:17:20+05:30",
-      ltp: 100,
-    });
-    const signal = await strategy.processTick({
-      timestamp: "2026-03-11T09:18:00+05:30",
-      ltp: 99,
-    });
+    const signal = await seedBuyEligibleIntradayTicks(strategy);
 
     expect(signal).toMatchObject({
       action: "BUY",
@@ -142,7 +193,7 @@ describe("Strategy1Live", () => {
       instanceId: 5,
       strategyId: 6,
       symbol: "NIFTY 50",
-      evaluationTimeframe: "1m",
+      evaluationTimeframe: "1min",
       currentBar: {
         date: "2026-03-11",
         open: 99,
@@ -171,9 +222,9 @@ describe("Strategy1Live", () => {
     });
   });
 
-  it("moves into position only after a BUY execution update is filled", async () => {
+  it("uses daily timeframe by default and emits only when the daily window opens", async () => {
     const strategy = new Strategy1Live({
-      instanceId: 5,
+      instanceId: 12,
       clientId: 1,
       strategyId: 6,
       parameters: {
@@ -183,17 +234,143 @@ describe("Strategy1Live", () => {
     });
 
     await strategy.initialize();
+    strategy.barHistory = [
+      ...makeDailySeed("2026-03-20", 90, 91),
+      ...makeDailySeed("2026-03-21", 91, 92),
+      ...makeDailySeed("2026-03-22", 102, 101),
+      ...makeDailySeed("2026-03-23", 101, 100),
+      makeMinuteBar("2026-03-24T09:15:00+05:30", 130, 130, 50, 60),
+    ];
 
-    await strategy.processTick({ timestamp: "2026-03-11T09:15:10+05:30", ltp: 105 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:15:50+05:30", ltp: 104 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:16:00+05:30", ltp: 103 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:16:20+05:30", ltp: 102 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:17:00+05:30", ltp: 101 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:17:20+05:30", ltp: 100 });
-    const signal = await strategy.processTick({
-      timestamp: "2026-03-11T09:18:00+05:30",
-      ltp: 99,
+    const beforeWindow = await strategy.onTick(
+      { timestamp: "2026-03-24T15:00:10+05:30", ltp: 99 },
+      {
+        lastClosedCandle: {
+          time: "2026-03-24T14:59:00+05:30",
+          open: 130,
+          high: 130,
+          low: 120,
+          close: 120,
+          volume: 100,
+        },
+        currentCandle: {
+          time: "2026-03-24T15:00:00+05:30",
+          open: 120,
+          high: 120,
+          low: 120,
+          close: 120,
+          volume: 1000,
+        },
+      },
+    );
+
+    expect(beforeWindow).toBeNull();
+    expect(strategy.getDiagnostics()).toMatchObject(
+      expect.objectContaining({
+        timeframe: "1day",
+        evaluationTimeframe: "1day",
+      }),
+    );
+
+    const signal = await strategy.onTick(
+      { timestamp: "2026-03-24T15:01:10+05:30", ltp: 98 },
+      {
+        lastClosedCandle: {
+          time: "2026-03-24T15:00:00+05:30",
+          open: 130,
+          high: 130,
+          low: 120,
+          close: 120,
+          volume: 1000,
+        },
+        currentCandle: {
+          time: "2026-03-24T15:01:00+05:30",
+          open: 120,
+          high: 120,
+          low: 120,
+          close: 120,
+          volume: 100,
+        },
+      },
+    );
+
+    expect(signal).toMatchObject({
+      action: "BUY",
+      strategy_instance_id: 12,
     });
+    expect(signal.metadata.signal_anchor_time).toBe(
+      "2026-03-24T09:15:00+05:30",
+    );
+  });
+
+  it("anchors manual_stop to the daily signal anchor so same-day re-entry stays blocked", async () => {
+    const strategy = new Strategy1Live({
+      instanceId: 13,
+      clientId: 1,
+      strategyId: 6,
+      parameters: {
+        symbol: "NIFTY 50",
+        useHistoricalApi: false,
+      },
+    });
+
+    await strategy.initialize();
+    strategy.barHistory = [
+      ...makeDailySeed("2026-03-20", 90, 91),
+      ...makeDailySeed("2026-03-21", 91, 92),
+      ...makeDailySeed("2026-03-22", 102, 101),
+      ...makeDailySeed("2026-03-23", 101, 100),
+      ...makeDailySeed("2026-03-24", 100, 99),
+    ];
+    strategy.currentBar = makeMinuteBar(
+      "2026-03-24T15:24:00+05:30",
+      99,
+      100,
+      98,
+      99,
+    );
+    strategy.entryContext = {
+      entryDate: "2026-03-23T09:15:00+05:30",
+      instrument: "NIFTY 50 100 CE",
+      instrumentToken: "SIM_TOKEN",
+      entryPrice: 100,
+    };
+
+    const emitSignal = jest
+      .spyOn(strategy, "emitSignal")
+      .mockReturnValue({ event_id: "evt_manual", action: "SELL" });
+
+    await strategy.onSquareOff("manual_stop");
+
+    expect(strategy.lastEvaluatedBarTime).toBe("2026-03-24T09:15:00+05:30");
+    expect(emitSignal).toHaveBeenCalledWith(
+      "SELL",
+      "NIFTY 50 100 CE",
+      expect.any(Number),
+      "MARKET",
+      expect.any(Number),
+      expect.objectContaining({
+        exit_reason: "manual_stop",
+        signal_anchor_time: "2026-03-24T09:15:00+05:30",
+      }),
+    );
+  });
+
+  it("moves into position only after a BUY execution update is filled", async () => {
+    const strategy = new Strategy1Live({
+      instanceId: 5,
+      clientId: 1,
+      strategyId: 6,
+      parameters: {
+        symbol: "NIFTY 50",
+        useHistoricalApi: false,
+        timeframe: "1min",
+      },
+    });
+
+    await strategy.initialize();
+
+    const signal = await seedBuyEligibleIntradayTicks(strategy);
 
     strategy.handleExecutionUpdate({
       strategy_instance_id: 5,
@@ -235,6 +412,7 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 
@@ -272,21 +450,13 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 
     await strategy.initialize();
 
-    await strategy.processTick({ timestamp: "2026-03-11T09:15:10+05:30", ltp: 105 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:15:50+05:30", ltp: 104 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:16:00+05:30", ltp: 103 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:16:20+05:30", ltp: 102 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:17:00+05:30", ltp: 101 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:17:20+05:30", ltp: 100 });
-    const signal = await strategy.processTick({
-      timestamp: "2026-03-11T09:18:00+05:30",
-      ltp: 99,
-    });
+    const signal = await seedBuyEligibleIntradayTicks(strategy);
 
     expect(signal.trigger_bar_time).toBe("2026-03-11T09:17:00+05:30");
     expect(signal.signal_fingerprint).toMatch(/^[a-f0-9]{64}$/);
@@ -304,6 +474,7 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 
@@ -333,21 +504,13 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 
     await strategy.initialize();
 
-    await strategy.processTick({ timestamp: "2026-03-11T09:15:10+05:30", ltp: 105 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:15:50+05:30", ltp: 104 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:16:00+05:30", ltp: 103 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:16:20+05:30", ltp: 102 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:17:00+05:30", ltp: 101 });
-    await strategy.processTick({ timestamp: "2026-03-11T09:17:20+05:30", ltp: 100 });
-    const signal = await strategy.processTick({
-      timestamp: "2026-03-11T09:18:00+05:30",
-      ltp: 99,
-    });
+    const signal = await seedBuyEligibleIntradayTicks(strategy);
 
     strategy.handleExecutionUpdate({
       strategy_instance_id: 5,
@@ -368,6 +531,7 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 
@@ -376,38 +540,47 @@ describe("Strategy1Live", () => {
     await strategy.processTick({
       timestamp: "2026-03-11T09:15:10+05:30",
       ltp: 105,
+      volume: 100,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:15:50+05:30",
       ltp: 104,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:16:00+05:30",
       ltp: 103,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:16:20+05:30",
       ltp: 102,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:17:00+05:30",
       ltp: 101,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:17:20+05:30",
       ltp: 100,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:18:00+05:30",
       ltp: 101,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:18:50+05:30",
       ltp: 103,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:19:00+05:30",
       ltp: 104,
+    volume: 1000,
     });
 
     expect(strategy.getDiagnostics().lastEvaluation).toMatchObject({
@@ -425,6 +598,7 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 
@@ -433,31 +607,35 @@ describe("Strategy1Live", () => {
     await strategy.processTick({
       timestamp: "2026-03-11T09:15:10+05:30",
       ltp: 102,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:15:50+05:30",
       ltp: 101,
+    volume: 1000,
     });
     await strategy.processTick({
       timestamp: "2026-03-11T09:16:00+05:30",
       ltp: 100,
+    volume: 1000,
     });
 
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.stringContaining("Strategy1 evaluation action=NONE reason=no_entry"),
+    expect(strategy.getDiagnostics()).toEqual(
       expect.objectContaining({
-        instanceId: 5,
-        strategyId: 6,
-        symbol: "NIFTY 50",
-        tradeDate: "2026-03-11T09:15:00+05:30",
-        lastCompletedBar: {
-          date: "2026-03-11",
-          barTime: "2026-03-11T09:15:00+05:30",
-          open: 102,
-          high: 102,
-          low: 101,
-          close: 101,
-        },
+        lastEvaluation: expect.objectContaining({
+          action: null,
+          reason: "no_entry",
+          tradeDate: "2026-03-11T09:15:00+05:30",
+          lastCompletedBar: {
+            date: "2026-03-11",
+            barTime: "2026-03-11T09:15:00+05:30",
+            open: 102,
+            high: 102,
+            low: 101,
+            close: 101,
+            volume: 2000,
+          },
+        }),
       }),
     );
   });
@@ -481,7 +659,13 @@ describe("Strategy1Live", () => {
       instanceId: 5,
       clientId: 1,
       strategyId: 6,
-      parameters: { symbol: "NIFTY 50", useHistoricalApi: false, fixedMax: true, maxRed: 3 },
+      parameters: {
+        symbol: "NIFTY 50",
+        useHistoricalApi: false,
+        timeframe: "1min",
+        fixedMax: true,
+        maxRed: 3,
+      },
     });
 
     await strategy.initialize();
@@ -505,14 +689,27 @@ describe("Strategy1Live", () => {
     strategy.onSignal = (signal) => capturedSignals.push(signal);
 
     // Open the 09:21 candle with ltp=45
-    await strategy.processTick({ timestamp: "2026-03-11T09:21:10+05:30", ltp: 45 });
+    await strategy.processTick({
+      timestamp: "2026-03-11T09:21:10+05:30",
+      ltp: 45,
+    volume: 1000,
+    });
     // Drive close of the 09:21 candle down to 30
-    await strategy.processTick({ timestamp: "2026-03-11T09:21:50+05:30", ltp: 30 });
+    await strategy.processTick({
+      timestamp: "2026-03-11T09:21:50+05:30",
+      ltp: 30,
+    volume: 1000,
+    });
     // Tick at 09:22 closes the 09:21 bar (close=30) — should trigger SELL
-    const result = await strategy.processTick({ timestamp: "2026-03-11T09:22:00+05:30", ltp: 50 });
+    const result = await strategy.processTick({
+      timestamp: "2026-03-11T09:22:00+05:30",
+      ltp: 50,
+    volume: 1000,
+    });
 
     // Either returned from processTick OR emitted via onSignal
-    const sellSignal = result || capturedSignals.find((s) => s.action === "SELL");
+    const sellSignal =
+      result || capturedSignals.find((s) => s.action === "SELL");
     expect(sellSignal).toBeTruthy();
     expect(sellSignal.action).toBe("SELL");
     expect(strategy.pendingExitContext).toMatchObject({
@@ -564,6 +761,7 @@ describe("Strategy1Live", () => {
       parameters: {
         symbol: "NIFTY 50",
         useHistoricalApi: false,
+        timeframe: "1min",
       },
     });
 

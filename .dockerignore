@@ -1,12 +1,16 @@
 .git
 .gitignore
 .codex
-src/dashboard/node_modules
-src/dashboard/.next
-logs
-data/market-archive
+.planning
+apps/dashboard/node_modules
+apps/dashboard/.next
+apps/dashboard/.next-*
 coverage
 tmp
+logs
+var/logs
+var/tmp
+data/market-archive
 *.log
 
 session-ses_*.md

@@ -1,10 +1,13 @@
-const { childLogger } = require("../../../packages/core/logger/logger");
+const loggerModule = require("../../../packages/core/logger/logger");
 const { query } = require("../../../packages/database/postgresClient");
 const { AngelOneBrokerAPI } = require("../../../packages/broker-adapters/angel-one/angelOneBroker");
 const { generateTOTP } = require("../../../packages/core/utils/totp");
 const config = require("../../../config/default");
 
-const logger = childLogger("angel-historical-data");
+const logger =
+  typeof loggerModule.childLogger === "function"
+    ? loggerModule.childLogger("angel-historical-data")
+    : loggerModule.logger;
 
 const SYMBOL_ALIASES = {
   NIFTY: ["NIFTY 50", "NIFTY"],

@@ -10,10 +10,19 @@ const {
   buildSignalFingerprint,
 } = require("../../core/utils/signalFingerprint");
 const {
+  applyStrategy1VwapGate,
+  buildStrategy1EvaluationContext,
+  normalizeStrategy1Timeframe,
+} = require("./strategy1Timeframe");
+const {
   normalizeRuntimeState,
 } = require("../../../apps/strategy-engine/src/strategyRuntimeStore");
 
-const DEFAULT_HISTORY_PATH = path.resolve(process.cwd(), "Data", "idx_data.csv");
+const DEFAULT_HISTORY_PATH = path.resolve(
+  process.cwd(),
+  "Data",
+  "idx_data.csv",
+);
 const IST_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Kolkata",
   year: "numeric",
@@ -28,19 +37,29 @@ const IST_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 });
 
+function resolveConfiguredTimeframe(config = {}) {
+  return normalizeStrategy1Timeframe(
+    config.parameters?.timeframe ||
+      config.parameters?.candlePeriod ||
+      config.timeframe,
+  );
+}
+
 class Strategy1Live extends BaseStrategy {
   constructor(config = {}) {
+    const timeframe = resolveConfiguredTimeframe(config);
+
     super({
       ...config,
       name: "STRATEGY1_LIVE",
-      evaluationMode:
-        config.evaluationMode || config.parameters?.evaluationMode || "1m_close",
+      evaluationMode: "1m_close",
       signalCooldown: config.signalCooldown ?? 60_000,
     });
 
     this.parameters = {
       quantity: 25,
       symbol: "NIFTY 50",
+      timeframe,
       candlePeriod: "1min",
       evaluationMode: "1m_close",
       fixedMax: true,
@@ -48,6 +67,9 @@ class Strategy1Live extends BaseStrategy {
       historyPath: config.historyPath || DEFAULT_HISTORY_PATH,
       useHistoricalApi: false,
       ...config.parameters,
+      timeframe,
+      candlePeriod: "1min",
+      evaluationMode: "1m_close",
     };
 
     this.barHistory = [];
@@ -58,8 +80,7 @@ class Strategy1Live extends BaseStrategy {
     this.historyBootstrapSource = "none";
     this.lastEvaluation = null;
     this.lastEvaluatedBarTime = null;
-    this.persistRuntimeState =
-      config.persistRuntimeState || (async () => null);
+    this.persistRuntimeState = config.persistRuntimeState || (async () => null);
     this.runtimeState = normalizeRuntimeState(config.runtimeState || {});
   }
 
@@ -72,6 +93,7 @@ class Strategy1Live extends BaseStrategy {
     logger.info("Initialized STRATEGY1_LIVE", {
       instanceId: this.instanceId,
       symbol: this.parameters.symbol,
+      timeframe: this.parameters.timeframe,
       historyBars: this.barHistory.length,
       historyPath: this.parameters.historyPath,
       historyBootstrapSource: this.historyBootstrapSource,
@@ -101,7 +123,7 @@ class Strategy1Live extends BaseStrategy {
   async loadRetainedBars() {
     try {
       const result = await query(
-        `SELECT candle_time, open, high, low, close
+        `SELECT candle_time, open, high, low, close, volume
          FROM market_ohlc_1m
          WHERE symbol = $1
            AND trading_day = (
@@ -121,6 +143,7 @@ class Strategy1Live extends BaseStrategy {
             high: Number(row.high),
             low: Number(row.low),
             close: Number(row.close),
+            volume: Number(row.volume || 0),
           }),
         )
         .filter(Boolean);
@@ -155,10 +178,13 @@ class Strategy1Live extends BaseStrategy {
     );
 
     if (columnIndex.Time === undefined) {
-      logger.warn("Strategy1 history file does not contain intraday Time column", {
-        instanceId: this.instanceId,
-        historyPath,
-      });
+      logger.warn(
+        "Strategy1 history file does not contain intraday Time column",
+        {
+          instanceId: this.instanceId,
+          historyPath,
+        },
+      );
       return [];
     }
 
@@ -174,6 +200,7 @@ class Strategy1Live extends BaseStrategy {
           high: Number(columns[columnIndex.High]),
           low: Number(columns[columnIndex.Low]),
           close: Number(columns[columnIndex.Close]),
+          volume: 0,
         }),
       )
       .filter(Boolean)
@@ -181,6 +208,14 @@ class Strategy1Live extends BaseStrategy {
   }
 
   async onMarketTick() {}
+
+  getEvaluationContext() {
+    return buildStrategy1EvaluationContext({
+      minuteBars: this.barHistory,
+      timeframe: this.parameters.timeframe,
+    });
+  }
+
 
   async onTick(tick, candleUpdate = {}) {
     if (!tick || !tick.ltp || !candleUpdate.lastClosedCandle) {
@@ -201,30 +236,63 @@ class Strategy1Live extends BaseStrategy {
     }
 
     this.barHistory = this.upsertBar(this.barHistory, lastClosedBar);
-
-    const bars = this.getEvaluationBars();
+    const evaluationContext = this.getEvaluationContext();
     const state = {
       inPosition: Boolean(this.entryContext),
       entryDate: this.entryContext?.entryDate || null,
       lastEvaluatedDate: this.lastEvaluatedBarTime,
       symbol: this.parameters.symbol,
     };
-    const evaluation = evaluateStrategy1(bars, state, {
-      ticker: this.parameters.symbol,
-      fixedMax: this.parameters.fixedMax,
-      maxRed: this.parameters.maxRed,
-    });
 
-    this.lastEvaluatedBarTime = lastClosedBar.barTime;
-
-    // Keep trailingStop in entryContext so it survives a restart even if
-    // bar history is temporarily incomplete on recovery.
-    if (this.entryContext && evaluation.trailingStop != null) {
-      this.entryContext = { ...this.entryContext, trailingStop: evaluation.trailingStop };
+    if (!evaluationContext.evaluationEligible || !evaluationContext.latestBar) {
+      this.recordEvaluation(
+        {
+          action: null,
+          reason: evaluationContext.reason,
+          trailingStop: this.entryContext?.trailingStop ?? null,
+          referencePrice: null,
+          indicators: null,
+        },
+        tick,
+        evaluationContext,
+        state,
+        lastClosedBar,
+      );
+      await this.persistState();
+      return null;
     }
 
-    this.recordEvaluation(evaluation, tick, bars, state, lastClosedBar);
+    const evaluation = applyStrategy1VwapGate(
+      evaluateStrategy1(evaluationContext.bars, state, {
+        ticker: this.parameters.symbol,
+        fixedMax: this.parameters.fixedMax,
+        maxRed: this.parameters.maxRed,
+      }),
+      evaluationContext,
+    );
+
+    this.lastEvaluatedBarTime =
+      evaluationContext.latestBar.signalAnchorTime ||
+      evaluationContext.latestBar.barTime;
+
+    if (this.entryContext && evaluation.trailingStop != null) {
+      this.entryContext = {
+        ...this.entryContext,
+        trailingStop: evaluation.trailingStop,
+      };
+    }
+
+    this.recordEvaluation(
+      evaluation,
+      tick,
+      evaluationContext,
+      state,
+      lastClosedBar,
+    );
     await this.persistState();
+
+    const evaluationBar = evaluationContext.latestBar;
+    const referencePrice = Number(evaluationBar.close);
 
     if (evaluation.action === "BUY") {
       if (this.pendingEntryContext) {
@@ -241,16 +309,20 @@ class Strategy1Live extends BaseStrategy {
         optionContract.instrument,
         Math.max(1, this.parameters.quantity || 25),
         "MARKET",
-        Number(lastClosedBar.close),
+        referencePrice,
         this.buildSignalMetadata({
           action: "BUY",
           instrument: optionContract.instrument,
           instrumentToken: optionContract.instrumentToken,
+          evaluationBar,
           lastClosedBar,
-          referencePrice: Number(lastClosedBar.close),
+          referencePrice,
           resolverSource: optionContract.source,
           instrumentResolutionStatus:
             optionContract.source === "database" ? "resolved" : "unresolved",
+          vwapPoint: evaluationContext.latestVwapPoint,
+          vwapGatePassed: Boolean(evaluation.vwapGatePassed),
+          decisionPrice: evaluationContext.decisionPrice,
         }),
       );
 
@@ -260,28 +332,36 @@ class Strategy1Live extends BaseStrategy {
           entryDate: evaluation.entryDate,
           instrument: optionContract.instrument,
           instrumentToken: optionContract.instrumentToken,
-          entryPrice: Number(lastClosedBar.close),
+          entryPrice: referencePrice,
         };
         await this.persistState();
         return signal;
       }
     }
 
-    if (evaluation.action === "SELL" && this.entryContext && !this.pendingExitContext) {
+    if (
+      evaluation.action === "SELL" &&
+      this.entryContext &&
+      !this.pendingExitContext
+    ) {
       const signal = this.emitSignal(
         "SELL",
         this.entryContext.instrument,
         Math.max(1, this.parameters.quantity || 25),
         "MARKET",
-        Number(lastClosedBar.close),
+        referencePrice,
         this.buildSignalMetadata({
           action: "SELL",
           instrument: this.entryContext.instrument,
           instrumentToken: this.entryContext.instrumentToken,
+          evaluationBar,
           lastClosedBar,
-          referencePrice: Number(lastClosedBar.close),
+          referencePrice,
           exitReason: evaluation.reason,
           instrumentResolutionStatus: "resolved",
+          vwapPoint: evaluationContext.latestVwapPoint,
+          vwapGatePassed: evaluation.vwapGatePassed ?? null,
+          decisionPrice: evaluationContext.decisionPrice,
         }),
       );
 
@@ -310,10 +390,11 @@ class Strategy1Live extends BaseStrategy {
       high: candle.high,
       low: candle.low,
       close: candle.close,
+      volume: candle.volume,
     });
   }
 
-  createBarRecord({ timestamp, date, time, open, high, low, close }) {
+  createBarRecord({ timestamp, date, time, open, high, low, close, volume = 0 }) {
     const barTime = timestamp
       ? this.formatIstBarTime(new Date(timestamp))
       : this.formatIstBarTimeFromParts(date, time);
@@ -329,6 +410,7 @@ class Strategy1Live extends BaseStrategy {
       high: Number(high),
       low: Number(low),
       close: Number(close),
+      volume: Number(volume || 0),
     };
   }
 
@@ -353,9 +435,13 @@ class Strategy1Live extends BaseStrategy {
   }
 
   upsertBar(bars, nextBar) {
-    const existingIndex = bars.findIndex((bar) => bar.barTime === nextBar.barTime);
+    const existingIndex = bars.findIndex(
+      (bar) => bar.barTime === nextBar.barTime,
+    );
     if (existingIndex >= 0) {
-      return bars.map((bar, index) => (index === existingIndex ? nextBar : bar));
+      return bars.map((bar, index) =>
+        index === existingIndex ? nextBar : bar,
+      );
     }
 
     return [...bars, nextBar].sort((left, right) =>
@@ -363,35 +449,44 @@ class Strategy1Live extends BaseStrategy {
     );
   }
 
-  getEvaluationBars() {
-    return [...this.barHistory];
-  }
-
-  recordEvaluation(evaluation, tick, bars, state, lastClosedBar) {
+  recordEvaluation(evaluation, tick, evaluationContext, state, lastClosedBar) {
+    const bars = evaluationContext.bars || [];
     const latestIndex = bars.length - 1;
     const indicators = evaluation.indicators || {};
     const redCounts = indicators.redCounts || [];
     const atrValues = indicators.atr || [];
+    const evaluationBar = evaluationContext.latestBar || lastClosedBar || null;
     const snapshot = {
       timestamp: formatIST(tick.timestamp),
       symbol: this.parameters.symbol,
+      timeframe: this.parameters.timeframe,
       action: evaluation.action || null,
       reason: evaluation.reason || "unknown",
       inPosition: Boolean(state.inPosition),
       entryDate: state.entryDate || null,
-      tradeDate: lastClosedBar?.barTime || null,
-      price: Number(lastClosedBar?.close ?? tick.ltp),
-      evaluationTimeframe: "1m",
+      tradeDate: evaluationBar?.barTime || null,
+      price: Number(evaluationBar?.close ?? lastClosedBar?.close ?? tick.ltp),
+      evaluationTimeframe: evaluationContext.evaluationTimeframe,
+      evaluationWindowOpen: Boolean(evaluationContext.evaluationWindowOpen),
       historyBootstrapSource: this.historyBootstrapSource,
       historyBars: this.barHistory.length,
+      aggregatedBars: bars.length,
       currentBar: this.currentBar ? { ...this.currentBar } : null,
       lastCompletedBar: lastClosedBar ? { ...lastClosedBar } : null,
-      redCount: redCounts[latestIndex] ?? null,
+      evaluationBar: evaluationBar ? { ...evaluationBar } : null,
+      redCount: latestIndex >= 0 ? (redCounts[latestIndex] ?? null) : null,
       maxRed: Number(this.parameters.maxRed ?? 3),
-      atr: this.toRoundedNumber(atrValues[latestIndex]),
+      atr:
+        latestIndex >= 0 ? this.toRoundedNumber(atrValues[latestIndex]) : null,
       trailingStop: this.toRoundedNumber(evaluation.trailingStop),
       referencePrice: this.toRoundedNumber(evaluation.referencePrice),
-      lastClose: lastClosedBar ? this.toRoundedNumber(lastClosedBar.close) : null,
+      decisionPrice: this.toRoundedNumber(evaluationContext.decisionPrice),
+      vwap: this.toRoundedNumber(evaluationContext.latestVwapPoint?.vwap),
+      vwapGatePassed:
+        evaluation.vwapGatePassed === undefined ? null : Boolean(evaluation.vwapGatePassed),
+      lastClose: evaluationBar
+        ? this.toRoundedNumber(evaluationBar.close)
+        : null,
     };
 
     this.lastEvaluation = snapshot;
@@ -418,7 +513,8 @@ class Strategy1Live extends BaseStrategy {
       instanceId: this.instanceId,
       strategyId: this.strategyId,
       symbol: this.parameters.symbol,
-      evaluationTimeframe: "1m",
+      timeframe: this.parameters.timeframe,
+      evaluationTimeframe: this.parameters.timeframe,
       historyBootstrapSource: this.historyBootstrapSource,
       historyBars: this.barHistory.length,
       currentBar: this.currentBar ? { ...this.currentBar } : null,
@@ -426,7 +522,9 @@ class Strategy1Live extends BaseStrategy {
       pendingEntryContext: this.pendingEntryContext
         ? { ...this.pendingEntryContext }
         : null,
-      pendingExitContext: this.pendingExitContext ? { ...this.pendingExitContext } : null,
+      pendingExitContext: this.pendingExitContext
+        ? { ...this.pendingExitContext }
+        : null,
       lastEvaluation: this.lastEvaluation ? { ...this.lastEvaluation } : null,
     };
   }
@@ -464,19 +562,28 @@ class Strategy1Live extends BaseStrategy {
     action,
     instrument,
     instrumentToken,
-    lastClosedBar,
+    evaluationBar = null,
+    lastClosedBar = null,
     referencePrice,
     resolverSource = null,
     exitReason = null,
     instrumentResolutionStatus = "resolved",
+    vwapPoint = null,
+    vwapGatePassed = null,
+    decisionPrice = null,
   }) {
     const triggerBarTime =
-      lastClosedBar?.barTime || this.lastEvaluatedBarTime || null;
+      evaluationBar?.barTime ||
+      lastClosedBar?.barTime ||
+      this.lastEvaluatedBarTime ||
+      null;
+    const signalAnchorTime = evaluationBar?.signalAnchorTime || triggerBarTime;
     const signalFingerprint = buildSignalFingerprint({
       strategyInstanceId: this.instanceId,
       symbol: this.parameters.symbol,
       action,
       triggerBarTime,
+      signalAnchorTime,
     });
 
     if (this.lastEvaluation) {
@@ -491,16 +598,23 @@ class Strategy1Live extends BaseStrategy {
       resolver_source: resolverSource,
       exit_reason: exitReason,
       trigger_bar_time: triggerBarTime,
+      signal_anchor_time: signalAnchorTime,
       signal_fingerprint: signalFingerprint,
       instrument_resolution_status: instrumentResolutionStatus,
       metadata: {
         trigger_bar_time: triggerBarTime,
+        signal_anchor_time: signalAnchorTime,
         signal_fingerprint: signalFingerprint,
         instrument_resolution_status: instrumentResolutionStatus,
         resolver_source: resolverSource,
         exit_reason: exitReason,
         reference_price: referencePrice,
+        decision_price: decisionPrice,
+        vwap: this.toRoundedNumber(vwapPoint?.vwap),
+        vwap_bar_time: vwapPoint?.barTime || null,
+        vwap_gate_passed: vwapGatePassed,
         instrument,
+        timeframe: this.parameters.timeframe,
       },
     };
   }
@@ -570,6 +684,17 @@ class Strategy1Live extends BaseStrategy {
       return;
     }
 
+    const evaluationContext = this.getEvaluationContext();
+    const evaluationBar =
+      evaluationContext.latestBar || this.currentBar || null;
+
+    if (reason === "manual_stop") {
+      this.lastEvaluatedBarTime =
+        evaluationBar?.signalAnchorTime ||
+        evaluationBar?.barTime ||
+        this.lastEvaluatedBarTime;
+    }
+
     const signal = this.emitSignal(
       "SELL",
       this.entryContext.instrument,
@@ -580,8 +705,11 @@ class Strategy1Live extends BaseStrategy {
         action: "SELL",
         instrument: this.entryContext.instrument,
         instrumentToken: this.entryContext.instrumentToken,
+        evaluationBar,
         lastClosedBar: this.currentBar,
-        referencePrice: Number(this.lastTick?.ltp || this.entryContext.entryPrice || 0),
+        referencePrice: Number(
+          this.lastTick?.ltp || this.entryContext.entryPrice || 0,
+        ),
         exitReason: reason,
         instrumentResolutionStatus: "resolved",
       }),
@@ -599,6 +727,6 @@ class Strategy1Live extends BaseStrategy {
 }
 
 Strategy1Live.description =
-  "Intraday consecutive-red strategy using completed 1-minute candles and ATM CE paper signals";
+  "Strategy1 worker using configurable default-daily timeframe aggregation from retained 1-minute candles";
 
 module.exports = { Strategy1Live };

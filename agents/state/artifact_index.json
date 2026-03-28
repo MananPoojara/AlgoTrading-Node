@@ -15,20 +15,60 @@
       "artifact_type": "strategy_spec",
       "strategy_id": "strategy1",
       "path": "agents/artifacts/strategy_specs/strategy1_spec_v1.0.0.md",
-      "status": "APPROVED",
+      "status": "SUPERSEDED",
       "stage_context": "Stage 1 documentation backfill",
-      "updated_at_utc": "2026-03-24T07:40:56+00:00",
-      "notes": "Backfilled from existing Strategy1 briefing and PineScript under founder direction."
+      "updated_at_utc": "2026-03-25T06:35:00+00:00",
+      "notes": "Superseded by strategy1_spec_v1.1.0 after founder changed Strategy1 timeframe contract on 2026-03-25."
     },
     {
       "artifact_id": "strategy1_mapping_v1.0.0",
       "artifact_type": "strategy_mapping",
       "strategy_id": "strategy1",
       "path": "agents/artifacts/mapping_docs/strategy1_mapping_v1.0.0.md",
-      "status": "APPROVED",
+      "status": "SUPERSEDED",
       "stage_context": "Stage 2 documentation backfill",
-      "updated_at_utc": "2026-03-24T07:47:39+00:00",
-      "notes": "Acknowledged by Senior Backend after platform-gap review. No missing platform component blocks Strategy1 paper-parity rework."
+      "updated_at_utc": "2026-03-25T06:35:00+00:00",
+      "notes": "Superseded by strategy1_mapping_v1.1.0 after founder changed Strategy1 timeframe contract on 2026-03-25."
+    },
+    {
+      "artifact_id": "strategy1_spec_v1.1.0",
+      "artifact_type": "strategy_spec",
+      "strategy_id": "strategy1",
+      "path": "agents/artifacts/strategy_specs/strategy1_spec_v1.1.0.md",
+      "status": "SUPERSEDED",
+      "stage_context": "Stage 1 Strategy1 timeframe-contract refresh",
+      "updated_at_utc": "2026-03-27T04:59:47.627Z",
+      "notes": "Founder-approved Strategy1 contract refresh: default 1day with optional 1min/5min/15min and restart-required timeframe changes. Superseded by Strategy1 v1.2.0 on 2026-03-27 after founder added VWAP-gated entry and manual position correction requirements."
+    },
+    {
+      "artifact_id": "strategy1_mapping_v1.1.0",
+      "artifact_type": "strategy_mapping",
+      "strategy_id": "strategy1",
+      "path": "agents/artifacts/mapping_docs/strategy1_mapping_v1.1.0.md",
+      "status": "SUPERSEDED",
+      "stage_context": "Stage 2 Strategy1 timeframe-contract refresh",
+      "updated_at_utc": "2026-03-27T04:59:47.627Z",
+      "notes": "Stage 2 now includes: immediate daily_30d validation, replay-only performance stats, daily and intraday validation charts on TradingView Lightweight Charts, session drill-down linked from monthly replay, session payload separation of manual override exits from normal Strategy1 parity inputs, stable daily-anchor handling for manual_stop exits, and a completed-daily historical replay path for daily_30d validation. Remaining remediation before PR approval: gap-safe 5min/15min aggregation and timeframe/restart-required visibility on the main dashboard strategy surface. Superseded by Strategy1 v1.2.0 on 2026-03-27 after founder added VWAP-gated entry and manual position correction requirements."
+    },
+    {
+      "artifact_id": "strategy1_spec_v1.2.0",
+      "artifact_type": "strategy_spec",
+      "strategy_id": "strategy1",
+      "path": "agents/artifacts/strategy_specs/strategy1_spec_v1.2.0.md",
+      "status": "APPROVED",
+      "stage_context": "Stage 1 Strategy1 VWAP/manual-correction contract refresh",
+      "updated_at_utc": "2026-03-27T04:59:47.627Z",
+      "notes": "Founder-approved Strategy1 v1.2.0 contract: daily decision window moves to 15:00-15:15 IST, VWAP gates BUY entries across all timeframes, and manual position correction becomes an audited workflow with manual trade recording."
+    },
+    {
+      "artifact_id": "strategy1_mapping_v1.2.0",
+      "artifact_type": "strategy_mapping",
+      "strategy_id": "strategy1",
+      "path": "agents/artifacts/mapping_docs/strategy1_mapping_v1.2.0.md",
+      "status": "APPROVED",
+      "stage_context": "Stage 2 Strategy1 VWAP/manual-correction mapping refresh",
+      "updated_at_utc": "2026-03-27T11:05:07Z",
+      "notes": "Senior Backend acknowledged Strategy1 v1.2.0 mapping on 2026-03-27. Stage 2 implementation now includes VWAP-gated Strategy1 runtime evaluation, 15:00-15:15 IST daily decision timing, minute-based monthly daily replay, per-day VWAP gate/source diagnostics for daily validation, validation-page non-blank chart/error states for degraded replay data, replay candidate-signal visibility when VWAP is unavailable, session-scoped VWAP handling that prevents stale prior-day VWAP reuse, mismatch detection/manual-correction APIs, validation-page VWAP plus mismatch visibility, a read-only main-dashboard operator cockpit backed by a unified dashboard-surface API with live 1-minute candles/session VWAP/runtime state/order and signal tapes/manual corrections/mismatch banner/restart-required visibility, local dashboard startup hardening via a self-contained Docker image, maintenance fallback page, staged start-dev orchestration, and a corrected local service-image build path that intentionally reuses the root workspace node_modules for paper/dev speed while the dashboard remains self-contained. Remaining Stage 2 blockers before Stage 3 review: 5min/15min bucket completeness checks and operator-facing manual correction submission UI."
     }
   ]
 }

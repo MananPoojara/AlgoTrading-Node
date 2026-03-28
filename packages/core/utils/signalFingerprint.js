@@ -8,6 +8,9 @@ function normalizeText(value) {
 
 function getSignalTriggerBarTime(signal = {}) {
   return (
+    signal.signal_anchor_time ||
+    signal.signalAnchorTime ||
+    signal.metadata?.signal_anchor_time ||
     signal.trigger_bar_time ||
     signal.triggerBarTime ||
     signal.metadata?.trigger_bar_time ||
@@ -20,8 +23,10 @@ function buildSignalFingerprint({
   symbol,
   action,
   triggerBarTime,
+  signalAnchorTime,
 } = {}) {
-  if (!strategyInstanceId || !symbol || !action || !triggerBarTime) {
+  const fingerprintTime = signalAnchorTime || triggerBarTime;
+  if (!strategyInstanceId || !symbol || !action || !fingerprintTime) {
     return null;
   }
 
@@ -29,7 +34,7 @@ function buildSignalFingerprint({
     Number(strategyInstanceId),
     normalizeText(symbol),
     normalizeText(action),
-    String(triggerBarTime),
+    String(fingerprintTime),
   ].join("|");
 
   return crypto.createHash("sha256").update(rawFingerprint).digest("hex");

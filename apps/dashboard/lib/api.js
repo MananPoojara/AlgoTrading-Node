@@ -218,6 +218,28 @@ class ApiService {
       `/api/strategies/instances/${instanceId}/validation${query ? `?${query}` : ""}`,
     );
   }
+  async getStrategyDashboardSurface(instanceId, params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return this.get(
+      `/api/strategies/instances/${instanceId}/dashboard-surface${query ? `?${query}` : ""}`,
+    );
+  }
+
+
+  async getStrategyPositionMismatch(instanceId) {
+    return this.get(`/api/strategies/instances/${instanceId}/position-mismatch`);
+  }
+
+  async getManualPositionCorrections(instanceId) {
+    return this.get(`/api/strategies/instances/${instanceId}/manual-position-corrections`);
+  }
+
+  async createManualPositionCorrection(instanceId, payload) {
+    return this.post(
+      `/api/strategies/instances/${instanceId}/manual-position-corrections`,
+      payload,
+    );
+  }
 
   async updateStrategySettings(instanceId, payload) {
     return this.patch(`/api/strategies/instances/${instanceId}/settings`, payload);

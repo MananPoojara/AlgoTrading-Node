@@ -4,9 +4,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$PROJECT_ROOT/infra/docker/docker-compose.yml"
+MAINTENANCE_TEMPLATE="$PROJECT_ROOT/infra/docker/maintenance/index.template.html"
+MAINTENANCE_DIR="$PROJECT_ROOT/var/tmp/dashboard-maintenance"
+MAINTENANCE_FILE="$MAINTENANCE_DIR/index.html"
 SERVICES=()
-RESET_PAPER_OMS=0
+TARGET_SERVICES=()
 INTERACTIVE_USED=0
+RESET_PAPER_OMS=0
+USE_MAINTENANCE=1
+SKIP_DASHBOARD_BUILD=0
+START_DASHBOARD=0
 AVAILABLE_SERVICES=(
   "postgres"
   "redis"
@@ -26,6 +33,7 @@ if [[ -t 1 ]]; then
   YELLOW=$'\033[33m'
   BLUE=$'\033[34m'
   CYAN=$'\033[36m'
+  MAGENTA=$'\033[35m'
   RESET=$'\033[0m'
 else
   BOLD=""
@@ -35,6 +43,7 @@ else
   YELLOW=""
   BLUE=""
   CYAN=""
+  MAGENTA=""
   RESET=""
 fi
 
@@ -61,7 +70,7 @@ ${CYAN}${BOLD}
  / ___ |/ / /_/ /  __/ / / /  / /_/ / /_/ / / / / / /_/ /
 /_/  |_/_/\__, /\___/_/ /_/   \__,_/\__,_/_/_/ /_/\__, /
          /____/                                  /____/
-${RESET}${DIM}  Docker control console for local paper trading${RESET}
+${RESET}${DIM}  Operator console for local paper-trading startup${RESET}
 EOF
 }
 
@@ -69,18 +78,24 @@ print_usage() {
   cat <<EOF
 Usage:
   ./infra/scripts/start-dev.sh
-  ./infra/scripts/start-dev.sh [--reset-paper-oms] [service ...]
+  ./infra/scripts/start-dev.sh [--reset-paper-oms] [--no-maintenance] [--skip-dashboard-build] [service ...]
 
 Examples:
   ./infra/scripts/start-dev.sh
   ./infra/scripts/start-dev.sh --reset-paper-oms
+  ./infra/scripts/start-dev.sh dashboard
+  ./infra/scripts/start-dev.sh --no-maintenance api-server dashboard
   ./infra/scripts/start-dev.sh strategy-engine api-server
-  ./infra/scripts/start-dev.sh --reset-paper-oms market-data-service strategy-engine
 EOF
 }
 
 log_info() {
   echo "${BLUE}${BOLD}==>${RESET} $*"
+}
+
+log_stage() {
+  echo
+  echo "${MAGENTA}${BOLD}[$1]${RESET} ${BOLD}$2${RESET}"
 }
 
 log_warn() {
@@ -189,8 +204,8 @@ run_interactive_cli() {
   print_banner
   echo
   echo "${BOLD}Launch Mode${RESET}"
-  echo "  ${CYAN}1)${RESET} Full restart"
-  echo "  ${CYAN}2)${RESET} Full restart + reset paper OMS"
+  echo "  ${CYAN}1)${RESET} Full staged startup"
+  echo "  ${CYAN}2)${RESET} Full staged startup + reset paper OMS"
   echo "  ${CYAN}3)${RESET} Select services"
   echo "  ${CYAN}4)${RESET} Select services + reset paper OMS"
   echo "  ${CYAN}5)${RESET} Exit"
@@ -230,47 +245,58 @@ run_interactive_cli() {
   done
 }
 
-print_run_summary() {
-  local service_label="all services"
+contains_service() {
+  local wanted="$1"
+  shift || true
+  local service
+  for service in "$@"; do
+    if [[ "$service" == "$wanted" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
-  if (( ${#SERVICES[@]} > 0 )); then
+append_unique_service() {
+  local service="$1"
+  if ! contains_service "$service" "${TARGET_SERVICES[@]}"; then
+    TARGET_SERVICES+=("$service")
+  fi
+}
+
+prepare_target_services() {
+  if [[ ${#SERVICES[@]} -eq 0 ]]; then
+    TARGET_SERVICES=("${AVAILABLE_SERVICES[@]}")
+  else
+    TARGET_SERVICES=("${SERVICES[@]}")
+  fi
+
+  if contains_service "dashboard" "${TARGET_SERVICES[@]}"; then
+    START_DASHBOARD=1
+    if ! contains_service "api-server" "${TARGET_SERVICES[@]}"; then
+      append_unique_service "api-server"
+      log_info "Added api-server because dashboard depends on it."
+    fi
+  fi
+}
+
+print_run_summary() {
+  local service_label
+  if (( ${#SERVICES[@]} == 0 )); then
+    service_label="all default services"
+  else
     service_label="${SERVICES[*]}"
   fi
 
   echo
   echo "${BOLD}Run Summary${RESET}"
-  echo "  root:   $PROJECT_ROOT"
-  echo "  scope:  $service_label"
-  if [[ "$RESET_PAPER_OMS" -eq 1 ]]; then
-    echo "  reset:  paper OMS tables will be cleared"
-  else
-    echo "  reset:  no paper OMS cleanup"
-  fi
+  echo "  root:        $PROJECT_ROOT"
+  echo "  scope:       $service_label"
+  echo "  maintenance: $([[ "$USE_MAINTENANCE" -eq 1 ]] && echo "enabled" || echo "disabled")"
+  echo "  dashboard:   $([[ "$START_DASHBOARD" -eq 1 ]] && echo "included" || echo "skipped")"
+  echo "  build reuse: $([[ "$SKIP_DASHBOARD_BUILD" -eq 1 ]] && echo "skip dashboard build" || echo "fresh dashboard build")"
+  echo "  reset OMS:   $([[ "$RESET_PAPER_OMS" -eq 1 ]] && echo "yes" || echo "no")"
   echo
-}
-
-wait_for_container_health() {
-  local container_name="$1"
-  local timeout_seconds="${2:-120}"
-  local elapsed=0
-
-  log_info "Waiting for $container_name to become healthy..."
-
-  while (( elapsed < timeout_seconds )); do
-    local status
-    status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_name" 2>/dev/null || true)"
-
-    if [[ "$status" == "healthy" || "$status" == "running" ]]; then
-      log_success "$container_name is $status."
-      return 0
-    fi
-
-    sleep 2
-    elapsed=$((elapsed + 2))
-  done
-
-  log_error "Timed out waiting for $container_name."
-  exit 1
 }
 
 cleanup_stale_algo_containers() {
@@ -285,7 +311,7 @@ cleanup_stale_algo_containers() {
     return 0
   fi
 
-  log_info "Removing stale exited algo containers to avoid docker-compose recreate errors..."
+  log_info "Removing stale exited algo containers to avoid recreate errors..."
   docker rm -f "${stale_containers[@]}" >/dev/null
 }
 
@@ -295,6 +321,262 @@ is_container_running() {
 
   status="$(docker inspect --format '{{.State.Status}}' "$container_name" 2>/dev/null || true)"
   [[ "$status" == "running" ]]
+}
+
+wait_for_container_health() {
+  local container_name="$1"
+  local timeout_seconds="${2:-120}"
+  local elapsed=0
+
+  log_info "Waiting for $container_name health..."
+  while (( elapsed < timeout_seconds )); do
+    local status
+    status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_name" 2>/dev/null || true)"
+
+    if [[ "$status" == "healthy" || "$status" == "running" ]]; then
+      log_success "$container_name is $status."
+      return 0
+    fi
+
+    printf "${DIM}   ... %ss${RESET}\r" "$elapsed"
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+
+  echo
+  log_error "Timed out waiting for $container_name."
+  return 1
+}
+
+wait_for_http() {
+  local url="$1"
+  local label="$2"
+  local timeout_seconds="${3:-120}"
+  local elapsed=0
+
+  log_info "Waiting for $label at $url ..."
+  while (( elapsed < timeout_seconds )); do
+    local status
+    status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$url" || true)"
+    if [[ "$status" =~ ^[234] ]]; then
+      log_success "$label is reachable (HTTP $status)."
+      return 0
+    fi
+
+    printf "${DIM}   ... %ss${RESET}\r" "$elapsed"
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+
+  echo
+  log_error "Timed out waiting for $label at $url."
+  return 1
+}
+
+render_maintenance_page() {
+  local stage="$1"
+  local detail="$2"
+  local updated_at
+  updated_at="$(TZ=Asia/Kolkata date '+%d %b %Y %I:%M:%S %p IST')"
+
+  mkdir -p "$MAINTENANCE_DIR"
+  sed \
+    -e "s|__MAINTENANCE_STAGE__|$stage|g" \
+    -e "s|__MAINTENANCE_DETAIL__|$detail|g" \
+    -e "s|__MAINTENANCE_UPDATED_AT__|$updated_at|g" \
+    "$MAINTENANCE_TEMPLATE" >"$MAINTENANCE_FILE"
+}
+
+start_maintenance_page() {
+  render_maintenance_page "$1" "$2"
+  "${COMPOSE_CMD[@]}" up -d dashboard-maintenance >/dev/null
+  wait_for_http "http://localhost:3000" "maintenance page" 30
+}
+
+update_maintenance_page() {
+  render_maintenance_page "$1" "$2"
+}
+
+stop_maintenance_page() {
+  "${COMPOSE_CMD[@]}" stop dashboard-maintenance >/dev/null 2>&1 || true
+  "${COMPOSE_CMD[@]}" rm -f dashboard-maintenance >/dev/null 2>&1 || true
+}
+
+show_relevant_logs() {
+  local service="$1"
+  echo
+  log_warn "Recent logs for $service:"
+  "${COMPOSE_CMD[@]}" logs --tail=40 "$service" || true
+}
+
+preflight_checks() {
+  if [[ ! -f "$PROJECT_ROOT/.env" ]]; then
+    log_error ".env file not found at $PROJECT_ROOT/.env"
+    echo "Copy .env.example to .env in the project root and update credentials first."
+    exit 1
+  fi
+
+  if [[ ! -d "$PROJECT_ROOT/node_modules" ]]; then
+    log_error "Root node_modules is missing at $PROJECT_ROOT/node_modules"
+    echo "Run 'npm install' in the project root before using the local Docker paper stack."
+    exit 1
+  fi
+
+  if [[ ! -f "$MAINTENANCE_TEMPLATE" ]]; then
+    log_error "Maintenance template not found at $MAINTENANCE_TEMPLATE"
+    exit 1
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    log_error "curl is required for HTTP readiness checks."
+    exit 1
+  fi
+}
+
+shutdown_scope() {
+  cleanup_stale_algo_containers
+
+  if (( ${#SERVICES[@]} == 0 )); then
+    log_info "Stopping and removing the current stack..."
+    "${COMPOSE_CMD[@]}" down --remove-orphans || true
+  else
+    local to_stop=("${TARGET_SERVICES[@]}")
+    if [[ "$START_DASHBOARD" -eq 1 ]]; then
+      to_stop+=("dashboard-maintenance")
+    fi
+
+    log_info "Stopping and removing selected services..."
+    "${COMPOSE_CMD[@]}" stop "${to_stop[@]}" >/dev/null 2>&1 || true
+    "${COMPOSE_CMD[@]}" rm -f "${to_stop[@]}" >/dev/null 2>&1 || true
+  fi
+
+  cleanup_stale_algo_containers
+}
+
+build_dashboard_image() {
+  if [[ "$START_DASHBOARD" -ne 1 ]]; then
+    return 0
+  fi
+
+  if [[ "$SKIP_DASHBOARD_BUILD" -eq 1 ]]; then
+    log_warn "Skipping dashboard image build by request."
+    return 0
+  fi
+
+  if [[ "$USE_MAINTENANCE" -eq 1 ]]; then
+    update_maintenance_page "Building dashboard image" "Compiling the operator UI into a production image."
+  fi
+
+  log_stage "4/9" "Building dashboard image"
+  "${COMPOSE_CMD[@]}" build dashboard
+  log_success "Dashboard image built."
+}
+
+start_infra_base() {
+  log_stage "2/9" "Starting infrastructure base"
+  "${COMPOSE_CMD[@]}" up -d postgres redis
+  wait_for_container_health "algo-postgres" 120
+  wait_for_container_health "algo-redis" 120
+}
+
+start_backend_services() {
+  local app_services=()
+  local service
+
+  for service in "${TARGET_SERVICES[@]}"; do
+    case "$service" in
+      postgres|redis|dashboard) ;;
+      *) app_services+=("$service") ;;
+    esac
+  done
+
+  if (( ${#app_services[@]} == 0 )); then
+    return 0
+  fi
+
+  if [[ "$USE_MAINTENANCE" -eq 1 && "$START_DASHBOARD" -eq 1 ]]; then
+    update_maintenance_page "Starting backend services" "Waiting for API and core paper-trading services to report healthy."
+  fi
+
+  log_stage "5/9" "Building and starting backend services"
+  "${COMPOSE_CMD[@]}" up -d --build "${app_services[@]}"
+}
+
+run_post_start_db_tasks() {
+  if ! is_container_running "algo-api"; then
+    log_warn "Skipping migrations because algo-api is not running."
+    return 0
+  fi
+
+  log_stage "7/9" "Running database tasks"
+  if "${COMPOSE_CMD[@]}" exec -T api-server npm run migrate; then
+    log_success "Database migrations completed."
+  else
+    log_warn "Database migrations failed. Continuing with the running stack."
+  fi
+
+  if [[ "$RESET_PAPER_OMS" -eq 1 ]]; then
+    log_info "Resetting paper OMS tables while preserving market data..."
+    "${COMPOSE_CMD[@]}" exec -T api-server npm run reset:paper
+    log_success "Paper OMS state reset completed."
+  fi
+}
+
+start_dashboard_service() {
+  if [[ "$START_DASHBOARD" -ne 1 ]]; then
+    return 0
+  fi
+
+  log_stage "8/9" "Cutting over to the real dashboard"
+
+  if [[ "$USE_MAINTENANCE" -eq 1 ]]; then
+    update_maintenance_page "Starting dashboard" "Backend is healthy. Switching from maintenance page to the operator cockpit."
+    stop_maintenance_page
+  fi
+
+  "${COMPOSE_CMD[@]}" up -d dashboard
+
+  if wait_for_http "http://localhost:3000" "dashboard" 90; then
+    log_success "Dashboard cutover complete."
+    return 0
+  fi
+
+  if [[ "$USE_MAINTENANCE" -eq 1 ]]; then
+    log_warn "Dashboard failed health checks. Restoring maintenance page."
+    start_maintenance_page "Dashboard unavailable" "Startup did not complete. Review logs and retry."
+  fi
+
+  show_relevant_logs "dashboard"
+  exit 1
+}
+
+print_service_status_table() {
+  echo
+  echo "${BOLD}Service Status${RESET}"
+  printf "  %-24s %-18s %-18s\n" "SERVICE" "STATE" "HEALTH"
+
+  local service container state health
+  for service in "${TARGET_SERVICES[@]}"; do
+    case "$service" in
+      postgres) container="algo-postgres" ;;
+      redis) container="algo-redis" ;;
+      market-data-service) container="algo-market-data" ;;
+      strategy-engine) container="algo-strategy-engine" ;;
+      market-scheduler) container="algo-market-scheduler" ;;
+      order-manager) container="algo-order-manager" ;;
+      api-server) container="algo-api" ;;
+      dashboard) container="algo-dashboard" ;;
+      *) container="" ;;
+    esac
+
+    if [[ -z "$container" ]]; then
+      continue
+    fi
+
+    state="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || echo "missing")"
+    health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' "$container" 2>/dev/null || echo "n/a")"
+    printf "  %-24s %-18s %-18s\n" "$service" "$state" "$health"
+  done
 }
 
 while [[ $# -gt 0 ]]; do
@@ -307,6 +589,14 @@ while [[ $# -gt 0 ]]; do
       RESET_PAPER_OMS=1
       shift
       ;;
+    --no-maintenance)
+      USE_MAINTENANCE=0
+      shift
+      ;;
+    --skip-dashboard-build)
+      SKIP_DASHBOARD_BUILD=1
+      shift
+      ;;
     *)
       SERVICES+=("$1")
       shift
@@ -314,68 +604,51 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ $# -eq 0 && ${#SERVICES[@]} -eq 0 && "$RESET_PAPER_OMS" -eq 0 && -t 0 ]]; then
+if [[ ${#SERVICES[@]} -eq 0 && "$RESET_PAPER_OMS" -eq 0 && "$USE_MAINTENANCE" -eq 1 && "$SKIP_DASHBOARD_BUILD" -eq 0 && -t 0 ]]; then
   run_interactive_cli
 fi
 
 if [[ "$INTERACTIVE_USED" -eq 0 ]]; then
   print_banner
 fi
+
+prepare_target_services
 print_run_summary
 
-log_info "Starting Algo Trading Platform from $PROJECT_ROOT"
+log_stage "1/9" "Preflight checks"
+preflight_checks
+log_success "Environment checks passed."
 
-if [[ ! -f "$PROJECT_ROOT/.env" ]]; then
-  log_error ".env file not found at $PROJECT_ROOT/.env"
-  echo "Copy .env.example to .env in the project root and update credentials first."
-  exit 1
+shutdown_scope
+start_infra_base
+
+if [[ "$START_DASHBOARD" -eq 1 && "$USE_MAINTENANCE" -eq 1 ]]; then
+  log_stage "3/9" "Bringing up the maintenance page"
+  start_maintenance_page "Preparing stack" "Infrastructure is healthy. The dashboard will replace this page after backend readiness checks pass."
 fi
 
-cleanup_stale_algo_containers
+build_dashboard_image
+start_backend_services
 
-if [[ ${#SERVICES[@]} -eq 0 ]]; then
-  log_info "Stopping and removing existing containers..."
-  "${COMPOSE_CMD[@]}" down --remove-orphans
-else
-  log_info "Stopping and removing selected services..."
-  "${COMPOSE_CMD[@]}" stop "${SERVICES[@]}" || true
-  "${COMPOSE_CMD[@]}" rm -f "${SERVICES[@]}" || true
+if contains_service "api-server" "${TARGET_SERVICES[@]}"; then
+  log_stage "6/9" "Waiting for API readiness"
+  wait_for_http "http://localhost:3001/health" "api-server" 90 || {
+    show_relevant_logs "api-server"
+    exit 1
+  }
 fi
 
-cleanup_stale_algo_containers
+run_post_start_db_tasks
+start_dashboard_service
 
-UP_ARGS=(up -d --build)
-if [[ ${#SERVICES[@]} -gt 0 ]]; then
-  UP_ARGS+=("${SERVICES[@]}")
-fi
-
-log_info "Building and starting Docker services..."
-"${COMPOSE_CMD[@]}" "${UP_ARGS[@]}"
-
-wait_for_container_health "algo-postgres" 120
-wait_for_container_health "algo-redis" 120
-
-if is_container_running "algo-api"; then
-  log_info "Running database migrations inside api-server container..."
-  if "${COMPOSE_CMD[@]}" exec -T api-server npm run migrate; then
-    log_success "Database migrations completed."
-  else
-    log_warn "Database migrations failed. Continuing with the running stack."
-  fi
-
-  if [[ "$RESET_PAPER_OMS" -eq 1 ]]; then
-    log_info "Resetting paper OMS tables while preserving market data..."
-    "${COMPOSE_CMD[@]}" exec -T api-server npm run reset:paper
-    log_success "Paper OMS state reset completed."
-  fi
-else
-  log_warn "Skipping database migrations because algo-api is not running."
-fi
+log_stage "9/9" "Startup complete"
+print_service_status_table
 
 echo
 log_success "Platform startup complete."
-echo "API:       http://localhost:3001"
-echo "Dashboard: http://localhost:3000"
+echo "  Dashboard:          http://localhost:3000"
+echo "  API:                http://localhost:3001"
+echo "  WebSocket gateway:  ws://localhost:8080"
 echo
 echo "${BOLD}Useful commands${RESET}"
 echo "  View status: ${COMPOSE_CMD[*]} ps"

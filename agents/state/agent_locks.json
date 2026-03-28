@@ -7,6 +7,166 @@
       "role": "MID_BACKEND_ENGINEER",
       "purpose": "After-hours Strategy1 validation using Angel historical data with source visibility in the dashboard",
       "locked_at_utc": "2026-03-24T11:43:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_1",
+      "role": "QA_ENGINEER",
+      "purpose": "Strategy1 v1.1.0 timeframe-contract spec refresh from founder instruction",
+      "locked_at_utc": "2026-03-25T06:30:00Z",
+      "released_at_utc": "2026-03-25T06:35:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Strategy1 v1.1.0 mapping refresh pending Senior Backend acknowledgement",
+      "locked_at_utc": "2026-03-25T06:33:00Z",
+      "released_at_utc": "2026-03-25T06:35:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "SENIOR_BACKEND_ENGINEER",
+      "purpose": "Acknowledge Strategy1 v1.1.0 mapping before implementation",
+      "locked_at_utc": "2026-03-25T06:48:00Z",
+      "released_at_utc": "2026-03-25T06:50:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Implement Strategy1 v1.1.0 timeframe support after Senior Backend acknowledgement",
+      "locked_at_utc": "2026-03-25T06:50:00Z",
+      "released_at_utc": "2026-03-25T06:05:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_3",
+      "role": "SENIOR_BACKEND_ENGINEER",
+      "purpose": "Review Strategy1 v1.1.0 implementation after Mid Backend Stage 2 completion",
+      "locked_at_utc": "2026-03-25T06:10:00Z",
+      "released_at_utc": "2026-03-25T06:20:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Implement Strategy1 monthly daily validation mode using 30 completed trading-day historical bars and dashboard parity/performance views",
+      "locked_at_utc": "2026-03-25T07:02:04Z",
+      "released_at_utc": "2026-03-25T07:34:02Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Implement Strategy1 daily plus intraday validation flow with candlestick charts and manual override separation",
+      "locked_at_utc": "2026-03-25T10:50:59.107Z",
+      "released_at_utc": "2026-03-25T12:12:30.344Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Fix Strategy1 daily_30d replay semantics and replace validation charts with TradingView Lightweight Charts",
+      "locked_at_utc": "2026-03-25T12:30:43.550Z",
+      "released_at_utc": "2026-03-25T12:41:24.794Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Fix Lightweight Charts API mismatch in the Strategy1 validation dashboard",
+      "locked_at_utc": "2026-03-25T12:48:28.161Z",
+      "released_at_utc": "2026-03-25T12:48:56.407Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Fix Strategy1 monthly daily validation source selection and chart visibility",
+      "locked_at_utc": "2026-03-25T13:05:52.015Z",
+      "released_at_utc": "2026-03-25T13:15:58.421Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Refresh Strategy1 to v1.2.0 VWAP and manual correction contract, then implement if gates allow",
+      "locked_at_utc": "2026-03-27T04:58:20.138Z",
+      "released_at_utc": "2026-03-27T05:00:32.665Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "SENIOR_BACKEND_ENGINEER",
+      "purpose": "Acknowledge Strategy1 v1.2.0 mapping before implementation",
+      "locked_at_utc": "2026-03-27T05:11:56.043Z",
+      "released_at_utc": "2026-03-27T05:12:33.626Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Implement Strategy1 v1.2.0 VWAP gate and manual correction workflow",
+      "locked_at_utc": "2026-03-27T05:12:33.626Z",
+      "released_at_utc": "2026-03-27T06:02:30Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Implement Strategy1 operator cockpit on the main dashboard with read-only chart/runtime surface",
+      "locked_at_utc": "2026-03-27T06:10:00Z",
+      "released_at_utc": "2026-03-27T06:28:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Fix Next.js production build failure for the /validation dashboard route",
+      "locked_at_utc": "2026-03-27T07:15:00Z",
+      "released_at_utc": "2026-03-27T07:22:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Harden local dashboard startup with maintenance fallback and staged start-dev orchestration",
+      "locked_at_utc": "2026-03-27T08:05:00Z",
+      "released_at_utc": "2026-03-27T08:46:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Fix shared service Docker build to install dependencies inside the image instead of copying workspace node_modules",
+      "locked_at_utc": "2026-03-27T08:56:00Z",
+      "released_at_utc": "2026-03-27T09:02:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Fix shared service Docker build networking so local startup does not hang on npm install",
+      "locked_at_utc": "2026-03-27T09:08:00Z",
+      "released_at_utc": "2026-03-27T09:18:00Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Fix Strategy1 daily validation to use minute-first replay with visible VWAP/source diagnostics and non-blank chart states",
+      "locked_at_utc": "2026-03-27T09:57:13Z",
+      "released_at_utc": "2026-03-27T10:09:18Z"
+    },
+    {
+      "strategy_id": "strategy1",
+      "stage": "STAGE_2",
+      "role": "MID_BACKEND_ENGINEER",
+      "purpose": "Make Strategy1 validation useful when NIFTY minute history has zero volume by surfacing pre-VWAP candidate signals and clearer chart markers",
+      "locked_at_utc": "2026-03-27T10:44:00Z",
+      "released_at_utc": "2026-03-27T11:05:07Z"
     }
   ]
 }
